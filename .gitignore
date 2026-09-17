@@ -1,0 +1,4 @@
+scratch/
+.clasprc.json
+node_modules/
+*.log
