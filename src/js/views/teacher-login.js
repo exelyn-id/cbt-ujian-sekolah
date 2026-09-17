@@ -20,6 +20,13 @@ Router.addRoute('/login', async () => {
                     <button type="submit" id="loginBtn" class="btn btn-primary w-full mt-4">
                         Masuk
                     </button>
+                    
+                    <div class="mt-5 pt-4 text-center" style="border-top: 1px dashed var(--border-color);">
+                        <p class="text-xs text-muted mb-2">Apakah Anda seorang siswa?</p>
+                        <a href="#/student/dashboard" class="btn btn-outline-primary btn-sm w-full flex items-center justify-center gap-1.5" style="text-decoration: none; font-weight: 600;">
+                            <i class="ph ph-student"></i> Buka Portal Ujian Siswa (Tanpa Login)
+                        </a>
+                    </div>
                 </form>
             </div>
         </div>

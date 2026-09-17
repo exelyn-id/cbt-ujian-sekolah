@@ -895,6 +895,72 @@ function saveQuestions(sessionId, examId, questionsList) {
 // ============================================================================
 
 /**
+ * Public endpoint to fetch all active exams for the Student Dashboard.
+ * Accessible publicly without teacher session. Returns sanitized metadata only.
+ */
+function getActivePublicExams() {
+  try {
+    var exams = _getTableData(CONFIG.SHEETS.EXAMS);
+    var allQ = _getTableData(CONFIG.SHEETS.QUESTIONS);
+    var users = _getTableData(CONFIG.SHEETS.USERS);
+
+    var userMap = {};
+    for (var u = 0; u < users.length; u++) {
+      userMap[users[u].userId] = users[u].name || users[u].username || "Guru";
+    }
+
+    var now = new Date().getTime();
+    var activeList = [];
+
+    for (var i = 0; i < exams.length; i++) {
+      var e = exams[i];
+      if (String(e.status || "").toUpperCase() !== "ACTIVE") continue;
+
+      // Check date boundaries if configured
+      if (e.startAt && new Date(e.startAt).getTime() > now) {
+        continue; // Not yet open
+      }
+      if (e.endAt && new Date(e.endAt).getTime() < now) {
+        continue; // Expired
+      }
+
+      var qCount = allQ.filter(function(q) {
+        return q.examId === e.examId && q.status !== "ARCHIVED";
+      }).length;
+
+      var teacherName = userMap[e.ownerTeacherId] || "Guru Pengampu";
+
+      activeList.push({
+        examId: e.examId,
+        title: e.title,
+        subject: e.subject,
+        material: e.material || "",
+        className: e.className,
+        description: e.description || "",
+        instructions: e.instructions || "",
+        durationMinutes: Number(e.durationMinutes || 60),
+        totalQuestions: qCount,
+        kkm: Number(e.kkm || 75),
+        maxAttempts: Number(e.maxAttempts || 1),
+        startAt: e.startAt || "",
+        endAt: e.endAt || "",
+        teacherName: teacherName
+      });
+    }
+
+    // Sort by title
+    activeList.sort(function(a, b) {
+      return a.title.localeCompare(b.title);
+    });
+
+    return _response(true, activeList, "Daftar ujian aktif berhasil dimuat.");
+  } catch (err) {
+    console.error("getActivePublicExams error:", err);
+    return _response(false, [], "Gagal memuat daftar ujian aktif: " + err.message);
+  }
+}
+
+/**
  * Public endpoint to fetch exam details for the student landing page.
  * Returns metadata ONLY (no questions, no answers).
  */

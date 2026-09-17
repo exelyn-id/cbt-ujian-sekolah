@@ -2,7 +2,18 @@ Router.addRoute('/student/landing', async (params) => {
     const examId = params.get('examId');
     
     if (!examId) {
-        return `<div class="container mt-6 text-center view"><h2>Error</h2><p>Link ujian tidak valid.</p></div>`;
+        return `
+            <div class="view flex items-center justify-center" style="background-color: var(--primary-50); min-height: 100vh;">
+                <div class="card text-center" style="width: 100%; max-width: 400px; margin: 1rem;">
+                    <i class="ph ph-warning-circle text-error mb-2" style="font-size: 3rem;"></i>
+                    <h3 class="mb-2">Link Tidak Valid</h3>
+                    <p class="text-muted text-sm mb-4">Parameter ID ujian tidak ditemukan.</p>
+                    <a href="#/student/dashboard" class="btn btn-primary btn-sm inline-flex items-center gap-1.5" style="text-decoration:none;">
+                        <i class="ph ph-squares-four"></i> Ke Portal Ujian Siswa
+                    </a>
+                </div>
+            </div>
+        `;
     }
 
     const res = await api.getPublicExam(examId);
@@ -12,7 +23,10 @@ Router.addRoute('/student/landing', async (params) => {
                 <div class="card text-center" style="width: 100%; max-width: 400px; margin: 1rem;">
                     <i class="ph ph-warning-circle text-error mb-2" style="font-size: 3rem;"></i>
                     <h3 class="mb-2">Ujian Tidak Tersedia</h3>
-                    <p class="text-muted text-sm">${res.message || 'Ujian tidak ditemukan atau link sudah tidak berlaku.'}</p>
+                    <p class="text-muted text-sm mb-4">${res.message || 'Ujian tidak ditemukan atau link sudah tidak berlaku.'}</p>
+                    <a href="#/student/dashboard" class="btn btn-primary btn-sm inline-flex items-center gap-1.5" style="text-decoration:none;">
+                        <i class="ph ph-squares-four"></i> Ke Portal Ujian Siswa
+                    </a>
                 </div>
             </div>
         `;
@@ -86,6 +100,12 @@ Router.addRoute('/student/landing', async (params) => {
                     <button type="submit" id="startBtn" class="btn btn-primary w-full mt-4 btn-lg">
                         Mulai Ujian Sekarang
                     </button>
+
+                    <div class="text-center mt-4 pt-3" style="border-top: 1px dashed var(--border-color);">
+                        <a href="#/student/dashboard" class="text-xs text-muted flex items-center justify-center gap-1 hover:text-primary" style="text-decoration: none;">
+                            <i class="ph ph-arrow-left"></i> Kembali ke Portal Daftar Ujian
+                        </a>
+                    </div>
                 </form>
             </div>
         </div>

@@ -143,6 +143,9 @@ Router.addRoute('/dashboard', async () => {
                         <span>Dashboard Guru</span>
                     </div>
                     <div class="flex items-center gap-2 sm:gap-3">
+                        <button class="btn btn-outline-primary btn-sm flex items-center gap-1.5" onclick="copyStudentPortalLink()" title="Bagikan Link Portal Siswa (Universal)">
+                            <i class="ph ph-student"></i> <span class="hidden sm-inline">Link Portal Siswa</span>
+                        </button>
                         <div class="teacher-profile-chip" title="${escapeHtml(AppState.user ? (AppState.user.teacherName || AppState.user.username || 'Guru') : 'Guru')}">
                             <i class="ph ph-user-circle"></i>
                             <span>${escapeHtml(AppState.user ? (AppState.user.teacherName || AppState.user.username || 'Guru') : 'Guru')}</span>
@@ -188,9 +191,14 @@ Router.addRoute('/dashboard', async () => {
 
                 <!-- Exam List -->
                 <div class="card">
-                    <div class="flex justify-between items-center mb-4">
+                    <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
                         <h3 style="margin:0;">Daftar Ujian Terbaru</h3>
-                        ${exams.length > 0 ? `<button class="btn btn-primary btn-sm" onclick="Router.navigate('/exam-editor')"><i class="ph ph-plus"></i> Ujian Baru</button>` : ''}
+                        <div class="flex items-center gap-2">
+                            <button class="btn btn-outline-primary btn-sm flex items-center gap-1.5" onclick="copyStudentPortalLink()" title="Bagikan Link Portal Siswa ke Seluruh Siswa">
+                                <i class="ph ph-share-network"></i> Link Portal Siswa
+                            </button>
+                            ${exams.length > 0 ? `<button class="btn btn-primary btn-sm" onclick="Router.navigate('/exam-editor')"><i class="ph ph-plus"></i> Ujian Baru</button>` : ''}
+                        </div>
                     </div>
                     ${examListHtml}
                 </div>
@@ -234,6 +242,43 @@ window.copyExamLink = function(examId) {
             </div>
             <div class="flex justify-center gap-2">
                 <button class="btn btn-secondary" onclick="closeModal()">Tutup</button>
+                <button class="btn btn-primary" onclick="navigator.clipboard.writeText('${url}'); UI.showToast('Link berhasil disalin!', 'success'); closeModal();">
+                    <i class="ph ph-copy"></i> Salin Link
+                </button>
+            </div>
+        </div>
+    `);
+};
+
+window.copyStudentPortalLink = function() {
+    let baseUrl = (typeof window !== 'undefined' && (window.__WEB_APP_URL__ || window.WEB_APP_URL)) || '';
+    if (!baseUrl || baseUrl.indexOf('googleusercontent.com') !== -1) {
+        baseUrl = ['https:', '', 'script.' + 'google.com', 'macros', 's', 'AKfycbwD5Ezfr1xclvOw4Q6h6vIxwSTY9Sjq75424i4ex7LbGcAG5QdP27-9KBJeuqARXdQo1w', 'exec'].join('/');
+    }
+    const cleanBase = baseUrl.split('?')[0].split('#')[0];
+    const url = cleanBase + '?page=student';
+
+    try {
+        navigator.clipboard.writeText(url).then(() => {
+            UI.showToast('Link portal siswa berhasil disalin ke clipboard!', 'success');
+        }).catch(() => {});
+    } catch (e) {}
+
+    UI.showModal(`
+        <div class="text-center">
+            <div class="flex items-center justify-center text-primary mb-2">
+                <i class="ph ph-student" style="font-size: 3rem;"></i>
+            </div>
+            <h3 class="mb-2">Link Portal Ujian Siswa</h3>
+            <p class="text-sm text-muted mb-4">Bagikan link universal ini kepada siswa. Siswa dapat melihat semua daftar ujian aktif dari berbagai mapel tanpa perlu login:</p>
+            <div class="input-group mb-4">
+                <input type="text" id="studentPortalShareLink" class="input-control text-center text-sm font-semibold" value="${url}" readonly onclick="this.select()" style="background: var(--bg-base); font-family: monospace;">
+            </div>
+            <div class="flex justify-center gap-2">
+                <button class="btn btn-secondary" onclick="closeModal()">Tutup</button>
+                <a href="${url}" target="_blank" class="btn btn-secondary" style="text-decoration:none;">
+                    <i class="ph ph-arrow-square-out"></i> Buka Portal
+                </a>
                 <button class="btn btn-primary" onclick="navigator.clipboard.writeText('${url}'); UI.showToast('Link berhasil disalin!', 'success'); closeModal();">
                     <i class="ph ph-copy"></i> Salin Link
                 </button>

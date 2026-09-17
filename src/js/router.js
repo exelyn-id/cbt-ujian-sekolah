@@ -68,9 +68,19 @@ const Router = {
             const urlParams = new URLSearchParams(window.location.search);
             const examId = params.exam || params.examId || injected.exam || injected.examId || urlParams.get('exam') || urlParams.get('examId');
             const mode = params.mode || injected.mode || urlParams.get('mode');
+            const page = params.page || injected.page || urlParams.get('page');
+            const role = params.role || injected.role || urlParams.get('role');
+            const portal = params.portal || injected.portal || urlParams.get('portal');
+            const view = params.view || injected.view || urlParams.get('view');
             
             if (examId) {
                 window.location.hash = `#/student/landing?examId=${encodeURIComponent(examId)}`;
+            } else if (page === 'student' || page === 'siswa' || page === 'portal' ||
+                       mode === 'student' || mode === 'siswa' ||
+                       role === 'student' || role === 'siswa' ||
+                       portal === 'student' || portal === 'siswa' ||
+                       view === 'student' || view === 'siswa') {
+                window.location.hash = `#/student/dashboard`;
             } else if (mode === 'teacher') {
                 window.location.hash = `#/dashboard`;
             } else {
@@ -80,9 +90,9 @@ const Router = {
             this.handleRoute();
         };
 
-        // If window.__INITIAL_PARAMS__ already has exam or mode, resolve immediately!
+        // If window.__INITIAL_PARAMS__ already has routing flags, resolve immediately!
         const initial = (typeof window !== 'undefined' && window.__INITIAL_PARAMS__) || {};
-        if (initial.exam || initial.examId || initial.mode) {
+        if (initial.exam || initial.examId || initial.mode || initial.page || initial.role || initial.portal || initial.view) {
             resolveInitialRoute(initial);
             return;
         }

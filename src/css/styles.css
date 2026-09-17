@@ -939,3 +939,14 @@ h3 { font-size: 1.25rem; }
     border-color: #4f46e5;
 }
 
+/* Student Dashboard Cards */
+.student-exam-card {
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+}
+.student-exam-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 16px -4px rgba(79, 70, 229, 0.12), 0 4px 8px -2px rgba(0, 0, 0, 0.05);
+    border-color: var(--primary-300) !important;
+}
+
+

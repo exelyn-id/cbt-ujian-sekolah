@@ -16,6 +16,7 @@ js_files = [
     os.path.join(SRC_DIR, 'js', 'views', 'exam-editor.js'),
     os.path.join(SRC_DIR, 'js', 'views', 'question-builder.js'),
     os.path.join(SRC_DIR, 'js', 'views', 'teacher-results.js'),
+    os.path.join(SRC_DIR, 'js', 'views', 'student-dashboard.js'),
     os.path.join(SRC_DIR, 'js', 'views', 'student-landing.js'),
     os.path.join(SRC_DIR, 'js', 'views', 'student-exam.js'),
     os.path.join(SRC_DIR, 'js', 'views', 'student-result.js'),

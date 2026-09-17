@@ -305,6 +305,30 @@ const api = {
     },
 
     // 4. PARTICIPANT / STUDENT
+    async getActivePublicExams() {
+        if (isGAS) return _callGAS('getActivePublicExams');
+
+        await this._delay();
+        const db = _getMockDB();
+        const activeList = (db.exams || []).filter(e => e.status === 'ACTIVE').map(e => ({
+            examId: e.examId,
+            title: e.title,
+            subject: e.subject,
+            material: e.material || '',
+            className: e.className,
+            description: e.description || '',
+            instructions: e.instructions || '',
+            durationMinutes: Number(e.durationMinutes || 60),
+            totalQuestions: (db.questions[e.examId] || []).length,
+            kkm: Number(e.kkm || 75),
+            maxAttempts: Number(e.maxAttempts || 1),
+            startAt: e.startAt || '',
+            endAt: e.endAt || '',
+            teacherName: 'Pak Andi Prasetyo, S.Kom'
+        }));
+        return { success: true, data: activeList, message: 'Daftar ujian aktif berhasil dimuat.' };
+    },
+
     async getPublicExam(examId) {
         if (isGAS) return _callGAS('getPublicExam', examId);
 
