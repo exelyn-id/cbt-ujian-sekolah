@@ -52,67 +52,68 @@
 
         gridEl.innerHTML = filtered.map(exam => {
             return `
-                <div class="card student-exam-card flex flex-col justify-between" style="border-radius: var(--radius-md); padding: 1.25rem; transition: transform 0.2s, box-shadow 0.2s; border: 1px solid var(--border-color); background: #ffffff;">
+                <div class="card student-exam-card flex flex-col justify-between">
                     <div>
                         <!-- Header Kartu -->
-                        <div class="flex justify-between items-start gap-2 mb-3">
-                            <span class="badge" style="background: var(--primary-50); color: var(--primary-700); font-weight: 700; border: 1px solid var(--primary-200); font-size: 0.78rem;">
-                                <i class="ph ph-book-open"></i> ${escapeHtml(exam.subject || 'Umum')}
+                        <div class="flex justify-between items-start gap-2 mb-2.5">
+                            <span class="badge" style="background: var(--primary-50); color: var(--primary-700); font-weight: 700; border: 1px solid var(--primary-200); font-size: 0.76rem; max-width: 70%;" title="${escapeHtml(exam.subject || 'Umum')}">
+                                <i class="ph ph-book-open"></i> <span class="truncate">${escapeHtml(exam.subject || 'Umum')}</span>
                             </span>
-                            <span class="badge badge-active flex items-center gap-1.5" style="font-size: 0.72rem; padding: 2px 8px; font-weight: 600;">
+                            <span class="badge badge-active flex items-center gap-1.5" style="font-size: 0.72rem; padding: 2px 7px; font-weight: 600; flex-shrink: 0;">
                                 <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:#16a34a; box-shadow:0 0 6px #16a34a;"></span>
                                 Dibuka
                             </span>
                         </div>
 
                         <!-- Judul Ujian -->
-                        <h3 class="font-bold text-base mb-1" style="color: var(--text-primary); line-height: 1.4; word-break: break-word;">
+                        <h3 class="font-bold text-base mb-1" style="color: var(--text-primary); line-height: 1.35; word-break: break-word;">
                             ${escapeHtml(exam.title)}
                         </h3>
 
                         ${exam.material ? `
-                            <div class="text-xs text-muted mb-3 flex items-center gap-1" style="word-break: break-word;">
-                                <i class="ph ph-tag"></i> <span>Materi: <strong>${escapeHtml(exam.material)}</strong></span>
+                            <div class="text-xs text-muted mb-2.5 flex items-center gap-1" style="word-break: break-word;">
+                                <i class="ph ph-tag" style="flex-shrink: 0;"></i> <span>Materi: <strong>${escapeHtml(exam.material)}</strong></span>
                             </div>
-                        ` : '<div class="mb-3"></div>'}
+                        ` : '<div class="mb-2"></div>'}
 
                         ${exam.description ? `
-                            <p class="text-xs text-muted mb-3" style="line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
+                            <p class="text-xs text-muted mb-2.5" style="line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;">
                                 ${escapeHtml(exam.description)}
                             </p>
                         ` : ''}
 
                         <!-- Rincian Informasi Ujian -->
-                        <div class="grid grid-cols-2 gap-2 mb-4 p-2.5" style="background: var(--bg-base); border-radius: var(--radius-sm); font-size: 0.8rem; border: 1px solid var(--border-color);">
-                            <div class="flex items-center gap-1.5 text-secondary">
-                                <i class="ph ph-users text-primary" style="font-size: 1rem;"></i>
+                        <div class="grid grid-cols-2 gap-2 mb-3.5 p-2.5 student-exam-info-grid" style="background: var(--bg-base); border-radius: var(--radius-sm); font-size: 0.8rem; border: 1px solid var(--border-color);">
+                            <div class="flex items-center gap-1.5 text-secondary overflow-hidden">
+                                <i class="ph ph-users text-primary" style="font-size: 1rem; flex-shrink: 0;"></i>
                                 <span class="truncate">Kelas: <strong>${escapeHtml(exam.className || 'Semua')}</strong></span>
                             </div>
-                            <div class="flex items-center gap-1.5 text-secondary">
-                                <i class="ph ph-clock text-primary" style="font-size: 1rem;"></i>
-                                <span>Durasi: <strong>${exam.durationMinutes || 60} Menit</strong></span>
+                            <div class="flex items-center gap-1.5 text-secondary overflow-hidden">
+                                <i class="ph ph-clock text-primary" style="font-size: 1rem; flex-shrink: 0;"></i>
+                                <span class="truncate">Durasi: <strong>${exam.durationMinutes || 60}m</strong></span>
                             </div>
-                            <div class="flex items-center gap-1.5 text-secondary">
-                                <i class="ph ph-list-numbers text-primary" style="font-size: 1rem;"></i>
-                                <span>Soal: <strong>${exam.totalQuestions || 0} Butir</strong></span>
+                            <div class="flex items-center gap-1.5 text-secondary overflow-hidden">
+                                <i class="ph ph-list-numbers text-primary" style="font-size: 1rem; flex-shrink: 0;"></i>
+                                <span class="truncate">Soal: <strong>${exam.totalQuestions || 0} Butir</strong></span>
                             </div>
-                            <div class="flex items-center gap-1.5 text-secondary">
-                                <i class="ph ph-target text-primary" style="font-size: 1rem;"></i>
-                                <span>KKM: <strong>${exam.kkm || 75}</strong></span>
+                            <div class="flex items-center gap-1.5 text-secondary overflow-hidden">
+                                <i class="ph ph-target text-primary" style="font-size: 1rem; flex-shrink: 0;"></i>
+                                <span class="truncate">KKM: <strong>${exam.kkm || 75}</strong></span>
                             </div>
                         </div>
                     </div>
 
                     <div>
-                        <div class="flex items-center justify-between text-xs text-muted mb-3 pt-2" style="border-top: 1px dashed var(--border-color);">
-                            <span class="flex items-center gap-1 truncate" title="${escapeHtml(exam.teacherName || 'Guru')}">
-                                <i class="ph ph-user-circle"></i> ${escapeHtml(exam.teacherName || 'Guru')}
+                        <div class="flex items-center justify-between text-xs text-muted mb-3 pt-2" style="border-top: 1px dashed var(--border-color); gap: 0.5rem;">
+                            <span class="flex items-center gap-1 truncate" title="${escapeHtml(exam.teacherName || 'Guru')}" style="max-width: 65%;">
+                                <i class="ph ph-user-circle" style="flex-shrink: 0; font-size: 1rem;"></i> 
+                                <span class="truncate">${escapeHtml(exam.teacherName || 'Guru')}</span>
                             </span>
-                            <span class="text-xs font-semibold text-primary">Maks. ${exam.maxAttempts || 1}x Coba</span>
+                            <span class="text-xs font-semibold text-primary" style="flex-shrink: 0;">Maks. ${exam.maxAttempts || 1}x Coba</span>
                         </div>
 
                         <!-- Tombol Masuk Ujian -->
-                        <button class="btn btn-primary w-full justify-center" onclick="goToExam('${exam.examId}')" style="padding: 0.6rem 1rem; font-weight: 700; letter-spacing: 0.02em;">
+                        <button class="btn btn-primary w-full justify-center student-start-btn" onclick="goToExam('${exam.examId}')" style="font-weight: 700; letter-spacing: 0.01em;">
                             Mulai Kerjakan <i class="ph ph-arrow-right"></i>
                         </button>
                     </div>
@@ -178,47 +179,44 @@
 
         // Initial fetch
         let initialLoadingHtml = `
-            <div class="view" style="background-color: var(--bg-base); min-height: 100vh; padding-bottom: 3rem;">
+            <div class="view student-portal-view" style="background-color: var(--bg-base); min-height: 100vh; padding-bottom: 3.5rem;">
                 <!-- Header Publik Siswa -->
-                <header class="glass" style="position: sticky; top: 0; z-index: 50; border-bottom: 1px solid var(--border-color);">
-                    <div class="container flex justify-between items-center py-3" style="flex-wrap: wrap; gap: 0.5rem;">
-                        <div class="flex items-center gap-2.5">
-                            <div style="width: 36px; height: 36px; border-radius: var(--radius-sm); background: var(--primary-600); display: flex; align-items: center; justify-content: center; color: white;">
+                <header class="glass" style="position: sticky; top: 0; z-index: 50; border-bottom: 1px solid var(--border-color); background: rgba(255, 255, 255, 0.95); backdrop-filter: blur(8px);">
+                    <div class="container flex justify-between items-center py-2.5 px-3 sm:px-4" style="gap: 0.5rem;">
+                        <div class="flex items-center gap-2 sm:gap-2.5">
+                            <div style="width: 36px; height: 36px; border-radius: var(--radius-sm); background: var(--primary-600); display: flex; align-items: center; justify-content: center; color: white; flex-shrink: 0; box-shadow: var(--shadow-sm);">
                                 <i class="ph ph-graduation-cap" style="font-size: 1.35rem;"></i>
                             </div>
                             <div>
-                                <h1 style="margin: 0; font-size: 1.1rem; font-weight: 800; color: var(--primary-700); line-height: 1.2;">CBT Online</h1>
-                                <span class="text-xs text-muted font-medium">Portal Ujian Siswa</span>
+                                <h1 style="margin: 0; font-size: 1.05rem; sm:font-size: 1.15rem; font-weight: 800; color: var(--primary-700); line-height: 1.2;">CBT Online</h1>
+                                <span class="text-xs text-muted font-medium" style="display: block; font-size: 0.75rem; line-height: 1.1;">Portal Ujian Siswa</span>
                             </div>
                         </div>
                         <div class="flex items-center gap-2">
-                            <button class="btn btn-secondary btn-sm" onclick="reloadStudentDashboard()" title="Muat Ulang Data">
-                                <i class="ph ph-arrows-clockwise"></i> <span class="hidden sm-inline">Segarkan</span>
+                            <button class="btn btn-secondary btn-sm flex items-center gap-1.5" onclick="reloadStudentDashboard()" title="Muat Ulang Data Ujian" style="padding: 0.4rem 0.75rem; font-size: 0.8rem; font-weight: 600;">
+                                <i class="ph ph-arrows-clockwise"></i> <span>Segarkan</span>
                             </button>
-                            <a href="#/login" class="btn btn-outline-primary btn-sm" style="text-decoration: none;">
-                                <i class="ph ph-chalkboard-teacher"></i> <span class="hidden sm-inline">Portal</span> Guru
-                            </a>
                         </div>
                     </div>
                 </header>
 
-                <div class="container mt-4">
+                <div class="container mt-3 sm:mt-4 px-3 sm:px-4">
                     <!-- Hero Banner -->
-                    <div class="card mb-4" style="background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%); border: 1px solid var(--primary-200); padding: 1.5rem 1.25rem;">
-                        <div class="flex items-start justify-between" style="flex-wrap: wrap; gap: 1rem;">
+                    <div class="card mb-3 sm:mb-4 student-hero-banner" style="background: linear-gradient(135deg, #eff6ff 0%, #f0fdf4 100%); border: 1px solid var(--primary-200); padding: 1.25rem 1rem;">
+                        <div class="flex items-start justify-between" style="flex-wrap: wrap; gap: 0.75rem;">
                             <div style="max-width: 600px;">
-                                <div class="badge badge-active text-xs mb-2 font-semibold">
-                                    <i class="ph ph-sparkle"></i> Akses Ujian Mandiri & Praktis
+                                <div class="badge badge-active text-xs mb-1.5 font-semibold" style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;">
+                                    <i class="ph ph-sparkle"></i> Akses Ujian Mandiri
                                 </div>
-                                <h2 style="font-size: 1.45rem; font-weight: 800; margin-bottom: 0.4rem; color: var(--primary-900);">
-                                    Selamat Datang di Portal Ujian Siswa 👋
+                                <h2 style="font-size: 1.25rem; font-weight: 800; margin-bottom: 0.35rem; color: var(--primary-900); line-height: 1.3;">
+                                    Selamat Datang di Portal Ujian 👋
                                 </h2>
-                                <p class="text-xs sm:text-sm text-secondary" style="margin: 0; line-height: 1.5;">
-                                    Silakan temukan mata pelajaran yang sedang diujikan hari ini, lalu klik <strong>Mulai Kerjakan</strong> untuk mengisi identitas dan mulai menjawab soal.
+                                <p class="text-xs sm:text-sm text-secondary" style="margin: 0; line-height: 1.45;">
+                                    Pilih ujian aktif di bawah ini, lalu klik <strong>Mulai Kerjakan</strong> untuk mengisi identitas dan mengerjakan soal.
                                 </p>
                             </div>
-                            <div class="flex items-center gap-2">
-                                <span id="activeExamCountBadge" class="badge" style="background: #ffffff; border: 1px solid var(--primary-300); color: var(--primary-700); font-weight: 700; padding: 0.4rem 0.8rem; font-size: 0.85rem; box-shadow: var(--shadow-sm);">
+                            <div class="flex items-center self-start sm:self-auto">
+                                <span id="activeExamCountBadge" class="badge" style="background: #ffffff; border: 1px solid var(--primary-300); color: var(--primary-700); font-weight: 700; padding: 0.35rem 0.75rem; font-size: 0.8rem; box-shadow: var(--shadow-sm);">
                                     Memuat...
                                 </span>
                             </div>
@@ -226,27 +224,27 @@
                     </div>
 
                     <!-- Filter & Search Controls -->
-                    <div class="card mb-4" style="padding: 1rem;">
-                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div class="card mb-3 sm:mb-4 student-filter-card" style="padding: 0.85rem 1rem;">
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
                             <div style="grid-column: span 1 / span 1;">
-                                <label class="input-label text-xs mb-1">Pencarian Ujian</label>
+                                <label class="input-label text-xs mb-1" style="font-weight: 600;">Pencarian Ujian</label>
                                 <div class="flex items-center" style="position: relative;">
                                     <input type="text" id="studentSearchInput" class="input-control text-sm" 
                                            placeholder="Cari judul ujian / materi..." 
                                            oninput="filterStudentExams()" 
-                                           style="padding-left: 2rem; width: 100%;">
-                                    <i class="ph ph-magnifying-glass text-muted" style="position: absolute; left: 0.75rem; font-size: 1rem;"></i>
+                                           style="padding-left: 2.1rem; width: 100%; min-height: 38px;">
+                                    <i class="ph ph-magnifying-glass text-muted" style="position: absolute; left: 0.75rem; font-size: 1.05rem;"></i>
                                 </div>
                             </div>
                             <div>
-                                <label class="input-label text-xs mb-1">Mata Pelajaran</label>
-                                <select id="studentSubjectSelect" class="input-control text-sm" onchange="filterStudentExams()">
+                                <label class="input-label text-xs mb-1" style="font-weight: 600;">Mata Pelajaran</label>
+                                <select id="studentSubjectSelect" class="input-control text-sm" onchange="filterStudentExams()" style="min-height: 38px; cursor: pointer; background-color: #ffffff;">
                                     <option value="ALL">Semua Mata Pelajaran</option>
                                 </select>
                             </div>
                             <div>
-                                <label class="input-label text-xs mb-1">Target Kelas</label>
-                                <select id="studentClassSelect" class="input-control text-sm" onchange="filterStudentExams()">
+                                <label class="input-label text-xs mb-1" style="font-weight: 600;">Target Kelas</label>
+                                <select id="studentClassSelect" class="input-control text-sm" onchange="filterStudentExams()" style="min-height: 38px; cursor: pointer; background-color: #ffffff;">
                                     <option value="ALL">Semua Kelas</option>
                                 </select>
                             </div>
@@ -254,7 +252,7 @@
                     </div>
 
                     <!-- Grid Daftar Ujian -->
-                    <div id="studentExamsGrid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 1.25rem;">
+                    <div id="studentExamsGrid" class="student-portal-grid">
                         <div style="grid-column: 1 / -1;" class="text-center py-10">
                             <i class="ph ph-spinner ph-spin text-primary" style="font-size: 2.5rem;"></i>
                             <p class="mt-2 text-sm text-muted">Mengambil data ujian aktif dari database sekolah...</p>

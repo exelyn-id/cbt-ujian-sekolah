@@ -939,14 +939,66 @@ h3 { font-size: 1.25rem; }
     border-color: #4f46e5;
 }
 
-/* Student Dashboard Cards */
-.student-exam-card {
-    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+/* Student Portal Styles & Mobile Responsiveness */
+.student-portal-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(310px, 1fr));
+    gap: 1.25rem;
 }
+
+.student-exam-card {
+    border-radius: var(--radius-md);
+    padding: 1.25rem;
+    transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+    border: 1px solid var(--border-color);
+    background: #ffffff;
+}
+
 .student-exam-card:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 16px -4px rgba(79, 70, 229, 0.12), 0 4px 8px -2px rgba(0, 0, 0, 0.05);
     border-color: var(--primary-300) !important;
 }
+
+.student-start-btn {
+    min-height: 42px;
+    padding: 0.6rem 1rem;
+    font-size: 0.9rem;
+}
+
+@media (max-width: 640px) {
+    .student-portal-view {
+        padding-bottom: 2.5rem !important;
+    }
+    .student-portal-grid {
+        grid-template-columns: 1fr;
+        gap: 0.85rem;
+    }
+    .student-hero-banner {
+        padding: 1rem 0.85rem !important;
+        border-radius: var(--radius-md) !important;
+    }
+    .student-hero-banner h2 {
+        font-size: 1.15rem !important;
+    }
+    .student-filter-card {
+        padding: 0.75rem 0.85rem !important;
+        border-radius: var(--radius-md) !important;
+    }
+    .student-exam-card {
+        padding: 0.95rem 0.85rem !important;
+        border-radius: var(--radius-md) !important;
+    }
+    .student-exam-info-grid {
+        padding: 0.45rem 0.6rem !important;
+        font-size: 0.76rem !important;
+        gap: 0.35rem 0.5rem !important;
+    }
+    .student-start-btn {
+        min-height: 44px !important;
+        font-size: 0.92rem !important;
+    }
+}
+
 
 
