@@ -15,14 +15,13 @@ Router.addRoute('/student/exam', async () => {
         const answers = AppState.answers[q.id] || [];
         
         let optionsHtml = '';
-        if (q.type === 'MCQ' || q.type === 'TRUE_FALSE') {
+        if (q.type === 'MCQ') {
             optionsHtml = q.options.map(opt => {
                 const isSel = answers === opt.id;
-                const letterBadge = q.type === 'TRUE_FALSE' ? (opt.id === 'TRUE' ? 'B' : 'S') : opt.id;
                 return `
                     <label class="option-card ${isSel ? 'selected' : ''}">
                         <input type="radio" name="q_${q.id}" value="${opt.id}" ${isSel ? 'checked' : ''} onchange="handleAnswer('${q.id}', '${opt.id}', '${q.type}')">
-                        <span class="opt-badge">${letterBadge}</span>
+                        <span class="opt-badge">${opt.id}</span>
                         <div class="opt-content">
                             <span>${escapeHtml(opt.text)}</span>
                             ${opt.imageUrl ? `<img src="${formatDirectImageUrl(opt.imageUrl)}" alt="Gambar Opsi" referrerpolicy="no-referrer" onerror="handleImgError(this)" style="max-height: 80px; max-width: 120px; object-fit: contain; border-radius: 4px; border: 1px solid var(--border-color); background: #ffffff;">` : ''}
@@ -30,6 +29,55 @@ Router.addRoute('/student/exam', async () => {
                     </label>
                 `;
             }).join('');
+        } else if (q.type === 'TRUE_FALSE') {
+            let statements = q.options || [];
+            // Backward compatibility fallback for old single TRUE_FALSE
+            if (statements.length === 2 && (statements[0].id === 'TRUE' || statements[0].text === 'Benar')) {
+                statements = [{ id: '1', text: q.text }];
+            }
+            const currentAns = (answers && typeof answers === 'object' && !Array.isArray(answers)) ? answers : {};
+
+            optionsHtml = `
+                <div class="table-responsive" style="overflow-x: auto; width: 100%; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: #ffffff; margin-bottom: 1rem; box-shadow: var(--shadow-sm);">
+                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
+                        <thead>
+                            <tr style="background: #e0f2fe; color: #0369a1; border-bottom: 2px solid #bae6fd;">
+                                <th style="padding: 12px 16px; font-weight: 700; width: 66%;">Pernyataan</th>
+                                <th style="padding: 12px 14px; text-align: center; width: 17%; font-weight: 700;">Benar</th>
+                                <th style="padding: 12px 14px; text-align: center; width: 17%; font-weight: 700;">Salah</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${statements.map((opt, sIdx) => {
+                                const val = currentAns[opt.id] || '';
+                                const isBenar = (val === 'TRUE' || val === 'BENAR' || val === 'B');
+                                const isSalah = (val === 'FALSE' || val === 'SALAH' || val === 'S');
+                                return `
+                                    <tr style="border-bottom: 1px solid var(--border-color); background: ${sIdx % 2 === 0 ? '#ffffff' : 'var(--bg-base)'};">
+                                        <td style="padding: 12px 16px; vertical-align: middle; line-height: 1.5; color: var(--text-primary); font-weight: 500;">
+                                            ${escapeHtml(opt.text)}
+                                        </td>
+                                        <td style="padding: 12px 14px; text-align: center; vertical-align: middle;">
+                                            <label style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; cursor: pointer; margin: 0;">
+                                                <input type="radio" name="tf_${q.id}_${opt.id}" value="TRUE" ${isBenar ? 'checked' : ''} 
+                                                       onchange="handleTrueFalseAnswer('${q.id}', '${opt.id}', 'TRUE')" 
+                                                       style="width: 1.35rem; height: 1.35rem; cursor: pointer; accent-color: var(--primary-600);">
+                                            </label>
+                                        </td>
+                                        <td style="padding: 12px 14px; text-align: center; vertical-align: middle;">
+                                            <label style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; cursor: pointer; margin: 0;">
+                                                <input type="radio" name="tf_${q.id}_${opt.id}" value="FALSE" ${isSalah ? 'checked' : ''} 
+                                                       onchange="handleTrueFalseAnswer('${q.id}', '${opt.id}', 'FALSE')" 
+                                                       style="width: 1.35rem; height: 1.35rem; cursor: pointer; accent-color: var(--primary-600);">
+                                            </label>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
         } else if (q.type === 'MCQ_COMPLEX') {
             const answerArr = Array.isArray(answers) ? answers : [];
             optionsHtml = q.options.map(opt => {
@@ -99,22 +147,7 @@ Router.addRoute('/student/exam', async () => {
     };
 
     let autosaveTimeout = null;
-    window.handleAnswer = function(questionId, optionId, type, isChecked = true) {
-        if (type === 'MCQ' || type === 'TRUE_FALSE') {
-            AppState.answers[questionId] = optionId;
-        } else if (type === 'MCQ_COMPLEX') {
-            let current = AppState.answers[questionId] || [];
-            if (!Array.isArray(current)) current = [];
-            
-            if (isChecked) {
-                if (!current.includes(optionId)) current.push(optionId);
-            } else {
-                current = current.filter(id => id !== optionId);
-            }
-            AppState.answers[questionId] = current;
-        }
-        
-        // Debounced Autosave to backend
+    const triggerAutosave = () => {
         const indicator = document.getElementById('autosaveIndicator');
         if (indicator) {
             indicator.innerHTML = '<i class="ph ph-spinner ph-spin text-warning"></i> Menyimpan...';
@@ -135,13 +168,53 @@ Router.addRoute('/student/exam', async () => {
                 }
             }
         }, 600);
+    };
 
-        renderQuestion(currentIndex); // re-render to update UI states
+    window.handleAnswer = function(questionId, optionId, type, isChecked = true) {
+        if (type === 'MCQ') {
+            AppState.answers[questionId] = optionId;
+        } else if (type === 'MCQ_COMPLEX') {
+            let current = AppState.answers[questionId] || [];
+            if (!Array.isArray(current)) current = [];
+            
+            if (isChecked) {
+                if (!current.includes(optionId)) current.push(optionId);
+            } else {
+                current = current.filter(id => id !== optionId);
+            }
+            AppState.answers[questionId] = current;
+        }
+        
+        triggerAutosave();
+        renderQuestion(currentIndex);
+    };
+
+    window.handleTrueFalseAnswer = function(questionId, statementId, value) {
+        let current = AppState.answers[questionId];
+        if (!current || typeof current !== 'object' || Array.isArray(current)) {
+            current = {};
+        }
+        current[statementId] = value;
+        AppState.answers[questionId] = current;
+
+        triggerAutosave();
+        renderQuestion(currentIndex);
     };
 
     window.updateProgress = function() {
         const gridHtml = questions.map((q, idx) => {
-            const hasAnswer = AppState.answers[q.id] && (Array.isArray(AppState.answers[q.id]) ? AppState.answers[q.id].length > 0 : true);
+            let hasAnswer = false;
+            const ans = AppState.answers[q.id];
+            if (q.type === 'TRUE_FALSE') {
+                const stmts = (q.options || []);
+                if (stmts.length > 0 && ans && typeof ans === 'object' && !Array.isArray(ans)) {
+                    hasAnswer = stmts.every(s => ans[s.id] !== undefined && ans[s.id] !== '');
+                }
+            } else if (q.type === 'MCQ_COMPLEX') {
+                hasAnswer = Array.isArray(ans) && ans.length > 0;
+            } else {
+                hasAnswer = Boolean(ans);
+            }
             const isCurrent = idx === currentIndex;
             
             let bg = hasAnswer ? 'var(--primary-500)' : 'var(--bg-base)';

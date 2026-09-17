@@ -2363,10 +2363,12 @@ Router.addRoute('/question-builder', async (params) => {
             newQ.correctAnswer = type === 'MCQ' ? 'A' : ['A'];
         } else if (type === 'TRUE_FALSE') {
             newQ.options = [
-                { id: 'TRUE', text: 'Benar', imageUrl: '' },
-                { id: 'FALSE', text: 'Salah', imageUrl: '' }
+                { id: '1', text: '' },
+                { id: '2', text: '' },
+                { id: '3', text: '' }
             ];
-            newQ.correctAnswer = 'TRUE';
+            newQ.correctAnswer = { '1': 'TRUE', '2': 'TRUE', '3': 'FALSE' };
+            newQ.scoringMethod = 'EXACT';
         }
         
         questions.push(newQ);
@@ -2408,6 +2410,59 @@ Router.addRoute('/question-builder', async (params) => {
         }
         q.options.splice(optIndex, 1);
         renderQuestionsList();
+    };
+
+    window.addStatement = function(qIndex) {
+        const q = questions[qIndex];
+        if (!q) return;
+        if (!Array.isArray(q.options)) q.options = [];
+        if (q.options.length >= 5) {
+            UI.showToast('Maksimal 5 pernyataan per soal.', 'warning');
+            return;
+        }
+        const nextId = String(q.options.length + 1);
+        q.options.push({ id: nextId, text: '' });
+        if (typeof q.correctAnswer !== 'object' || !q.correctAnswer || Array.isArray(q.correctAnswer)) {
+            q.correctAnswer = {};
+        }
+        q.correctAnswer[nextId] = 'TRUE';
+        renderQuestionsList();
+    };
+
+    window.removeStatement = function(qIndex, sIndex) {
+        const q = questions[qIndex];
+        if (!q || !Array.isArray(q.options)) return;
+        if (q.options.length <= 1) {
+            UI.showToast('Minimal harus ada 1 pernyataan.', 'warning');
+            return;
+        }
+        q.options.splice(sIndex, 1);
+        // Re-index statements to 1, 2, 3...
+        const oldKeyMap = (typeof q.correctAnswer === 'object' && q.correctAnswer && !Array.isArray(q.correctAnswer)) ? q.correctAnswer : {};
+        const newKeyMap = {};
+        q.options.forEach((opt, idx) => {
+            const oldId = opt.id;
+            const newId = String(idx + 1);
+            opt.id = newId;
+            newKeyMap[newId] = oldKeyMap[oldId] || 'TRUE';
+        });
+        q.correctAnswer = newKeyMap;
+        renderQuestionsList();
+    };
+
+    window.updateStatementText = function(qIndex, sIndex, text) {
+        if (questions[qIndex] && questions[qIndex].options && questions[qIndex].options[sIndex]) {
+            questions[qIndex].options[sIndex].text = text;
+        }
+    };
+
+    window.setStatementKey = function(qIndex, sId, keyVal) {
+        const q = questions[qIndex];
+        if (!q) return;
+        if (typeof q.correctAnswer !== 'object' || !q.correctAnswer || Array.isArray(q.correctAnswer)) {
+            q.correctAnswer = {};
+        }
+        q.correctAnswer[sId] = keyVal;
     };
 
     window.updateQuestionField = function(index, field, value) {
@@ -2619,23 +2674,96 @@ Router.addRoute('/question-builder', async (params) => {
         } else {
             cardsHtml = questions.map((q, qIndex) => {
                 let optionsHtml = '';
-                if (q.type === 'MCQ' || q.type === 'TRUE_FALSE') {
+                if (q.type === 'MCQ') {
                     optionsHtml = q.options.map((opt, optIndex) => `
                         <div class="option-builder-row">
                             <div class="flex items-center gap-2" style="flex-grow: 1; min-width: 200px;">
                                 <input type="radio" name="correct_${q.id}" ${q.correctAnswer === opt.id ? 'checked' : ''} onchange="setSingleAnswer(${qIndex}, '${opt.id}')" style="width:1.25rem; height:1.25rem; cursor:pointer; flex-shrink: 0;" title="Jadikan Kunci Jawaban">
-                                <input type="text" class="input-control opt-text-input" style="padding:0.4rem; flex-grow: 1;" value="${escapeHtml(opt.text)}" oninput="updateOptionText(${qIndex}, ${optIndex}, this.value)" ${q.type === 'TRUE_FALSE' ? 'readonly' : ''} placeholder="Teks opsi ${opt.id}">
+                                <input type="text" class="input-control opt-text-input" style="padding:0.4rem; flex-grow: 1;" value="${escapeHtml(opt.text)}" oninput="updateOptionText(${qIndex}, ${optIndex}, this.value)" placeholder="Teks opsi ${opt.id}">
                             </div>
-                            ${q.type !== 'TRUE_FALSE' ? `
-                                <div class="opt-extra">
-                                    <input type="text" class="input-control" style="padding:0.4rem; width: 130px;" value="${escapeHtml(opt.imageUrl || '')}" oninput="updateOptionImage(${qIndex}, ${optIndex}, this.value)" onpaste="handlePasteImage(event, 'option', ${qIndex}, ${optIndex})" placeholder="URL Gambar">
-                                    <button type="button" class="btn btn-icon btn-secondary btn-sm" onclick="triggerImageUpload('option', ${qIndex}, ${optIndex})" title="Upload Gambar Opsi"><i class="ph ph-upload-simple"></i></button>
-                                    <button type="button" class="btn btn-icon btn-outline-primary btn-sm" onclick="triggerClipboardPaste(${qIndex}, ${optIndex})" title="Paste Gambar Clipboard (Ctrl+V)"><i class="ph ph-clipboard-text"></i></button>
-                                    <button type="button" class="btn btn-icon btn-secondary text-error btn-sm" onclick="removeOption(${qIndex}, ${optIndex})" title="Hapus Opsi"><i class="ph ph-x"></i></button>
-                                </div>
-                            ` : ''}
+                            <div class="opt-extra">
+                                <input type="text" class="input-control" style="padding:0.4rem; width: 130px;" value="${escapeHtml(opt.imageUrl || '')}" oninput="updateOptionImage(${qIndex}, ${optIndex}, this.value)" onpaste="handlePasteImage(event, 'option', ${qIndex}, ${optIndex})" placeholder="URL Gambar">
+                                <button type="button" class="btn btn-icon btn-secondary btn-sm" onclick="triggerImageUpload('option', ${qIndex}, ${optIndex})" title="Upload Gambar Opsi"><i class="ph ph-upload-simple"></i></button>
+                                <button type="button" class="btn btn-icon btn-outline-primary btn-sm" onclick="triggerClipboardPaste(${qIndex}, ${optIndex})" title="Paste Gambar Clipboard (Ctrl+V)"><i class="ph ph-clipboard-text"></i></button>
+                                <button type="button" class="btn btn-icon btn-secondary text-error btn-sm" onclick="removeOption(${qIndex}, ${optIndex})" title="Hapus Opsi"><i class="ph ph-x"></i></button>
+                            </div>
                         </div>
                     `).join('');
+                } else if (q.type === 'TRUE_FALSE') {
+                    // Normalize options if legacy single TRUE/FALSE
+                    if (!Array.isArray(q.options) || q.options.length === 0 || (q.options.length === 2 && (q.options[0].id === 'TRUE' || q.options[0].text === 'Benar'))) {
+                        q.options = [
+                            { id: '1', text: '' },
+                            { id: '2', text: '' },
+                            { id: '3', text: '' }
+                        ];
+                    }
+                    if (typeof q.correctAnswer !== 'object' || !q.correctAnswer || Array.isArray(q.correctAnswer)) {
+                        q.correctAnswer = { '1': 'TRUE', '2': 'TRUE', '3': 'FALSE' };
+                    }
+
+                    optionsHtml = `
+                        <div class="tf-builder-table-wrap mb-3" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: #ffffff;">
+                            <div style="background: #f0f9ff; padding: 0.6rem 0.85rem; border-bottom: 1px solid #bae6fd; display: flex; justify-content: space-between; align-items: center;">
+                                <span class="font-bold text-xs" style="color: #0369a1; text-transform: uppercase; letter-spacing: 0.04em;">
+                                    <i class="ph ph-table"></i> Daftar Pernyataan Benar / Salah (Maksimal 5)
+                                </span>
+                                <span class="text-xs text-muted font-medium">${q.options.length} / 5 Pernyataan</span>
+                            </div>
+                            <div style="overflow-x: auto;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
+                                    <thead>
+                                        <tr style="background: var(--bg-base); border-bottom: 1px solid var(--border-color); color: var(--text-secondary);">
+                                            <th style="padding: 8px 10px; width: 40px; text-align: center;">No</th>
+                                            <th style="padding: 8px 10px; text-align: left;">Teks Pernyataan</th>
+                                            <th style="padding: 8px 10px; width: 160px; text-align: center;">Kunci Jawaban</th>
+                                            <th style="padding: 8px 10px; width: 50px; text-align: center;">Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${q.options.map((opt, sIdx) => {
+                                            const currentKey = (q.correctAnswer && q.correctAnswer[opt.id]) ? q.correctAnswer[opt.id] : 'TRUE';
+                                            return `
+                                                <tr style="border-bottom: 1px solid var(--border-color);">
+                                                    <td style="padding: 8px 10px; text-align: center; font-weight: bold; color: var(--text-secondary); vertical-align: middle;">
+                                                        ${sIdx + 1}
+                                                    </td>
+                                                    <td style="padding: 6px 10px; vertical-align: middle;">
+                                                        <input type="text" class="input-control" style="padding: 0.4rem 0.6rem; font-size: 0.85rem; width: 100%;" 
+                                                               value="${escapeHtml(opt.text)}" 
+                                                               oninput="updateStatementText(${qIndex}, ${sIdx}, this.value)" 
+                                                               placeholder="Tuliskan pernyataan ${sIdx + 1} di sini...">
+                                                    </td>
+                                                    <td style="padding: 6px 10px; text-align: center; vertical-align: middle;">
+                                                        <div class="flex items-center justify-center gap-3">
+                                                            <label class="flex items-center gap-1" style="cursor: pointer; font-size: 0.82rem; font-weight: 600; color: #16a34a;">
+                                                                <input type="radio" name="tf_key_${q.id}_${opt.id}" value="TRUE" ${currentKey === 'TRUE' ? 'checked' : ''} onchange="setStatementKey(${qIndex}, '${opt.id}', 'TRUE')">
+                                                                Benar
+                                                            </label>
+                                                            <label class="flex items-center gap-1" style="cursor: pointer; font-size: 0.82rem; font-weight: 600; color: #dc2626;">
+                                                                <input type="radio" name="tf_key_${q.id}_${opt.id}" value="FALSE" ${currentKey === 'FALSE' ? 'checked' : ''} onchange="setStatementKey(${qIndex}, '${opt.id}', 'FALSE')">
+                                                                Salah
+                                                            </label>
+                                                        </div>
+                                                    </td>
+                                                    <td style="padding: 6px 10px; text-align: center; vertical-align: middle;">
+                                                        <button type="button" class="btn btn-icon btn-secondary btn-sm text-error" onclick="removeStatement(${qIndex}, ${sIdx})" title="Hapus Pernyataan" ${q.options.length <= 1 ? 'disabled' : ''}>
+                                                            <i class="ph ph-trash"></i>
+                                                        </button>
+                                                    </td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div style="padding: 0.5rem 0.85rem; background: var(--bg-base); border-top: 1px solid var(--border-color); display: flex; justify-content: flex-start;">
+                                <button type="button" class="btn btn-outline-primary btn-sm" onclick="addStatement(${qIndex})" ${q.options.length >= 5 ? 'disabled' : ''} style="font-size: 0.78rem;">
+                                    <i class="ph ph-plus"></i> Tambah Pernyataan ${q.options.length >= 5 ? '(Maksimal 5)' : `(${q.options.length}/5)`}
+                                </button>
+                            </div>
+                        </div>
+                    `;
                 } else if (q.type === 'MCQ_COMPLEX') {
                     const answerArr = Array.isArray(q.correctAnswer) ? q.correctAnswer : [];
                     optionsHtml = q.options.map((opt, optIndex) => `
@@ -2730,18 +2858,18 @@ Router.addRoute('/question-builder', async (params) => {
                             <div>
                                 <label class="input-label text-xs">Skor / Poin</label>
                                 <input type="number" class="input-control mb-2" value="${q.score}" oninput="updateQuestionField(${qIndex}, 'score', Number(this.value || 10))">
-                                ${q.type === 'MCQ_COMPLEX' ? `
+                                ${(q.type === 'MCQ_COMPLEX' || q.type === 'TRUE_FALSE') ? `
                                     <label class="input-label text-xs mt-2">Metode Penilaian</label>
                                     <select class="input-control text-sm" onchange="updateQuestionField(${qIndex}, 'scoringMethod', this.value)">
-                                        <option value="EXACT" ${q.scoringMethod === 'EXACT' ? 'selected' : ''}>Exact Set</option>
-                                        <option value="PARTIAL" ${q.scoringMethod === 'PARTIAL' ? 'selected' : ''}>Partial Credit</option>
+                                        <option value="EXACT" ${q.scoringMethod === 'EXACT' ? 'selected' : ''}>Exact (Semua Tepat)</option>
+                                        <option value="PARTIAL" ${q.scoringMethod === 'PARTIAL' ? 'selected' : ''}>Partial (Proporsional)</option>
                                     </select>
                                 ` : ''}
                             </div>
                         </div>
 
                         <div class="mb-2">
-                            <label class="input-label text-xs mb-2 block">Pilihan Jawaban & Kunci (Pilih/Centang jawaban yang benar)</label>
+                            <label class="input-label text-xs mb-2 block">${q.type === 'TRUE_FALSE' ? 'Daftar Pernyataan & Kunci Jawaban' : 'Pilihan Jawaban & Kunci (Pilih/Centang jawaban yang benar)'}</label>
                             ${optionsHtml}
                             ${(q.type === 'MCQ' || q.type === 'MCQ_COMPLEX') ? `
                                 <button class="btn btn-secondary btn-sm mt-2" onclick="addOption(${qIndex})">
@@ -2797,7 +2925,7 @@ Router.addRoute('/question-builder', async (params) => {
             const sampleData = [
                 headers,
                 [1, "MCQ", "Ibu kota negara Indonesia saat ini adalah...", "", "Jakarta", "Bandung", "Surabaya", "Nusantara", "Medan", "A", 10, "Ibu kota Indonesia saat ini adalah DKI Jakarta."],
-                [2, "TRUE_FALSE", "Matahari terbit dari arah timur dan tenggelam di arah barat.", "", "Benar", "Salah", "", "", "", "Benar", 10, "Secara visual dari bumi, rotasi bumi menyebabkan matahari tampak terbit dari timur."],
+                [2, "TRUE_FALSE", "Seorang murid memperkirakan banyaknya penonton suatu video di media sosial. Tentukan Benar atau Salah untuk setiap pernyataan berikut!", "", "Video tersebut hanya ditonton oleh 3.000 penonton setelah tepat 24 jam diunggah.", "Banyaknya penonton video meningkat dua kali lipat dari hari sebelumnya untuk beberapa hari setelah diunggah.", "Model banyaknya penonton ini tidak tepat untuk waktu yang cukup besar.", "", "", "B,B,S", 10, "Pernyataan 1 Benar, Pernyataan 2 Benar, Pernyataan 3 Salah."],
                 [3, "MCQ_COMPLEX", "Manakah dari teknologi berikut yang merupakan bahasa web frontend? (Pilih semua yang benar)", "", "HTML", "CSS", "JavaScript", "Python", "C++", "A,B,C", 15, "HTML, CSS, dan JavaScript adalah pilar teknologi web browser frontend."]
             ];
             const ws = XLSX.utils.aoa_to_sheet(sampleData);
@@ -3009,12 +3137,33 @@ Router.addRoute('/question-builder', async (params) => {
                     let correctAnswer = null;
 
                     if (type === 'TRUE_FALSE') {
-                        options = [
-                            { id: 'TRUE', text: optA || 'Benar', imageUrl: '' },
-                            { id: 'FALSE', text: optB || 'Salah', imageUrl: '' }
-                        ];
-                        const kUp = rawKey.toUpperCase();
-                        correctAnswer = (kUp === 'SALAH' || kUp === 'FALSE' || kUp === 'B') ? 'FALSE' : 'TRUE';
+                        const rawOptions = [optA, optB, optC, optD, optE].filter(o => o && String(o).trim());
+                        let statements = [];
+
+                        // Check if legacy Excel where optA='Benar' & optB='Salah' & no optC
+                        if (rawOptions.length === 2 && rawOptions[0].trim().toLowerCase() === 'benar' && rawOptions[1].trim().toLowerCase() === 'salah') {
+                            statements.push({ id: '1', text: questionText });
+                        } else if (rawOptions.length > 0) {
+                            rawOptions.slice(0, 5).forEach((st, sIdx) => {
+                                statements.push({ id: String(sIdx + 1), text: String(st).trim() });
+                            });
+                        } else {
+                            statements.push({ id: '1', text: 'Pernyataan 1' });
+                        }
+                        options = statements;
+
+                        // Parse keys e.g. "B,B,S" or "Benar,Benar,Salah" or "TRUE,TRUE,FALSE" or "B,S,B"
+                        const keyTokens = String(rawKey || '').split(/[,; ]+/).filter(Boolean);
+                        const keyMap = {};
+                        statements.forEach((st, sIdx) => {
+                            const tok = (keyTokens[sIdx] || keyTokens[0] || 'B').trim().toUpperCase();
+                            if (tok === 'S' || tok === 'SALAH' || tok === 'FALSE') {
+                                keyMap[st.id] = 'FALSE';
+                            } else {
+                                keyMap[st.id] = 'TRUE';
+                            }
+                        });
+                        correctAnswer = keyMap;
                     } else if (type === 'MCQ_COMPLEX') {
                         if (optA) options.push({ id: 'A', text: optA, imageUrl: '' });
                         if (optB) options.push({ id: 'B', text: optB, imageUrl: '' });
@@ -3555,27 +3704,96 @@ window.showStudentDetail = async function(attemptId) {
                         </div>
                     ` : ''}
 
-                    <!-- Jawaban Siswa -->
-                    <div class="ans-box ${isCorr ? 'ans-box-student-correct' : 'ans-box-student-wrong'}">
-                        <div class="ans-icon-wrap">
-                            <i class="ph ${isCorr ? 'ph-check-circle' : 'ph-x-circle'}" style="font-size: 1.25rem;"></i>
-                        </div>
-                        <div class="ans-content-wrap">
-                            <div class="text-xs font-bold" style="text-transform: uppercase; letter-spacing: 0.04em;">Jawaban Siswa:</div>
-                            <div class="font-medium mt-1" style="font-size: 0.92rem; line-height: 1.5;">${studentAnsText}</div>
-                        </div>
-                    </div>
+                    ${q.type === 'TRUE_FALSE' ? (() => {
+                        let sMap = {};
+                        if (typeof q.studentAnswer === 'object' && q.studentAnswer !== null) {
+                            sMap = q.studentAnswer;
+                        } else if (typeof q.studentAnswer === 'string' && q.studentAnswer.trim().startsWith('{')) {
+                            try { sMap = JSON.parse(q.studentAnswer); } catch (e) { sMap = {}; }
+                        } else if (q.studentAnswer) {
+                            sMap = { '1': q.studentAnswer };
+                        }
 
-                    <!-- Kunci Jawaban Resmi Guru -->
-                    <div class="ans-box ans-box-key">
-                        <div class="ans-icon-wrap">
-                            <i class="ph ph-key" style="font-size: 1.25rem;"></i>
+                        let cMap = {};
+                        if (typeof q.correctAnswer === 'object' && q.correctAnswer !== null) {
+                            cMap = q.correctAnswer;
+                        } else if (typeof q.correctAnswer === 'string' && q.correctAnswer.trim().startsWith('{')) {
+                            try { cMap = JSON.parse(q.correctAnswer); } catch (e) { cMap = {}; }
+                        } else if (q.correctAnswer) {
+                            cMap = { '1': q.correctAnswer };
+                        }
+
+                        let statements = q.options || [];
+                        if (statements.length === 2 && (statements[0].id === 'TRUE' || statements[0].text === 'Benar')) {
+                            statements = [{ id: '1', text: q.questionText }];
+                        }
+
+                        return `
+                            <div style="overflow-x: auto; margin-top: 0.5rem; margin-bottom: 0.75rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: #ffffff;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 0.84rem; text-align: left;">
+                                    <thead>
+                                        <tr style="background: #e0f2fe; color: #0369a1; border-bottom: 2px solid #bae6fd;">
+                                            <th style="padding: 8px 12px; width: 35px; text-align: center;">No</th>
+                                            <th style="padding: 8px 12px;">Pernyataan</th>
+                                            <th style="padding: 8px 12px; width: 110px; text-align: center;">Jawaban Siswa</th>
+                                            <th style="padding: 8px 12px; width: 100px; text-align: center;">Kunci Resmi</th>
+                                            <th style="padding: 8px 12px; width: 85px; text-align: center;">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${statements.map((st, sIdx) => {
+                                            let sVal = (sMap && sMap[st.id] !== undefined) ? String(sMap[st.id]).trim().toUpperCase() : '';
+                                            let cVal = (cMap && cMap[st.id] !== undefined) ? String(cMap[st.id]).trim().toUpperCase() : '';
+                                            if (sVal === 'BENAR' || sVal === 'B') sVal = 'TRUE';
+                                            if (sVal === 'SALAH' || sVal === 'S') sVal = 'FALSE';
+                                            if (cVal === 'BENAR' || cVal === 'B') cVal = 'TRUE';
+                                            if (cVal === 'SALAH' || cVal === 'S') cVal = 'FALSE';
+
+                                            const isStmtCorrect = sVal && cVal && sVal === cVal;
+                                            const sText = sVal === 'TRUE' ? '<span class="text-success font-semibold">Benar</span>' : (sVal === 'FALSE' ? '<span class="text-error font-semibold">Salah</span>' : '<span class="text-muted italic">-</span>');
+                                            const cText = cVal === 'TRUE' ? '<span class="text-success font-semibold">Benar</span>' : (cVal === 'FALSE' ? '<span class="text-error font-semibold">Salah</span>' : '-');
+
+                                            return `
+                                                <tr style="border-bottom: 1px solid var(--border-color); background: ${sIdx % 2 === 0 ? '#ffffff' : 'var(--bg-base)'};">
+                                                    <td style="padding: 8px 12px; text-align: center; font-weight: bold; color: var(--text-secondary); vertical-align: middle;">${sIdx + 1}</td>
+                                                    <td style="padding: 8px 12px; vertical-align: middle; line-height: 1.45; color: var(--text-primary); font-weight: 500;">${escapeHtml(st.text)}</td>
+                                                    <td style="padding: 8px 12px; text-align: center; vertical-align: middle;">${sText}</td>
+                                                    <td style="padding: 8px 12px; text-align: center; vertical-align: middle;">${cText}</td>
+                                                    <td style="padding: 8px 12px; text-align: center; vertical-align: middle;">
+                                                        <span class="badge ${isStmtCorrect ? 'badge-active' : 'badge-archived'}" style="font-size: 0.72rem; padding: 2px 6px;">
+                                                            ${isStmtCorrect ? '<i class="ph ph-check"></i> Tepat' : '<i class="ph ph-x"></i> Keliru'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                    })() : `
+                        <!-- Jawaban Siswa -->
+                        <div class="ans-box ${isCorr ? 'ans-box-student-correct' : 'ans-box-student-wrong'}">
+                            <div class="ans-icon-wrap">
+                                <i class="ph ${isCorr ? 'ph-check-circle' : 'ph-x-circle'}" style="font-size: 1.25rem;"></i>
+                            </div>
+                            <div class="ans-content-wrap">
+                                <div class="text-xs font-bold" style="text-transform: uppercase; letter-spacing: 0.04em;">Jawaban Siswa:</div>
+                                <div class="font-medium mt-1" style="font-size: 0.92rem; line-height: 1.5;">${studentAnsText}</div>
+                            </div>
                         </div>
-                        <div class="ans-content-wrap">
-                            <div class="text-xs font-bold" style="text-transform: uppercase; letter-spacing: 0.04em;">Kunci Jawaban Resmi:</div>
-                            <div class="font-medium mt-1" style="font-size: 0.92rem; line-height: 1.5;">${keyText}</div>
+
+                        <!-- Kunci Jawaban Resmi Guru -->
+                        <div class="ans-box ans-box-key">
+                            <div class="ans-icon-wrap">
+                                <i class="ph ph-key" style="font-size: 1.25rem;"></i>
+                            </div>
+                            <div class="ans-content-wrap">
+                                <div class="text-xs font-bold" style="text-transform: uppercase; letter-spacing: 0.04em;">Kunci Jawaban Resmi:</div>
+                                <div class="font-medium mt-1" style="font-size: 0.92rem; line-height: 1.5;">${keyText}</div>
+                            </div>
                         </div>
-                    </div>
+                    `}
 
                     ${q.explanation ? `
                         <div class="mt-2.5 p-2.5 text-xs" style="background: var(--bg-base); border-radius: var(--radius-sm); border-left: 3px solid var(--info); color: var(--text-secondary); line-height: 1.45;">
@@ -3834,14 +4052,13 @@ Router.addRoute('/student/exam', async () => {
         const answers = AppState.answers[q.id] || [];
         
         let optionsHtml = '';
-        if (q.type === 'MCQ' || q.type === 'TRUE_FALSE') {
+        if (q.type === 'MCQ') {
             optionsHtml = q.options.map(opt => {
                 const isSel = answers === opt.id;
-                const letterBadge = q.type === 'TRUE_FALSE' ? (opt.id === 'TRUE' ? 'B' : 'S') : opt.id;
                 return `
                     <label class="option-card ${isSel ? 'selected' : ''}">
                         <input type="radio" name="q_${q.id}" value="${opt.id}" ${isSel ? 'checked' : ''} onchange="handleAnswer('${q.id}', '${opt.id}', '${q.type}')">
-                        <span class="opt-badge">${letterBadge}</span>
+                        <span class="opt-badge">${opt.id}</span>
                         <div class="opt-content">
                             <span>${escapeHtml(opt.text)}</span>
                             ${opt.imageUrl ? `<img src="${formatDirectImageUrl(opt.imageUrl)}" alt="Gambar Opsi" referrerpolicy="no-referrer" onerror="handleImgError(this)" style="max-height: 80px; max-width: 120px; object-fit: contain; border-radius: 4px; border: 1px solid var(--border-color); background: #ffffff;">` : ''}
@@ -3849,6 +4066,55 @@ Router.addRoute('/student/exam', async () => {
                     </label>
                 `;
             }).join('');
+        } else if (q.type === 'TRUE_FALSE') {
+            let statements = q.options || [];
+            // Backward compatibility fallback for old single TRUE_FALSE
+            if (statements.length === 2 && (statements[0].id === 'TRUE' || statements[0].text === 'Benar')) {
+                statements = [{ id: '1', text: q.text }];
+            }
+            const currentAns = (answers && typeof answers === 'object' && !Array.isArray(answers)) ? answers : {};
+
+            optionsHtml = `
+                <div class="table-responsive" style="overflow-x: auto; width: 100%; border-radius: var(--radius-md); border: 1px solid var(--border-color); background: #ffffff; margin-bottom: 1rem; box-shadow: var(--shadow-sm);">
+                    <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 0.95rem;">
+                        <thead>
+                            <tr style="background: #e0f2fe; color: #0369a1; border-bottom: 2px solid #bae6fd;">
+                                <th style="padding: 12px 16px; font-weight: 700; width: 66%;">Pernyataan</th>
+                                <th style="padding: 12px 14px; text-align: center; width: 17%; font-weight: 700;">Benar</th>
+                                <th style="padding: 12px 14px; text-align: center; width: 17%; font-weight: 700;">Salah</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${statements.map((opt, sIdx) => {
+                                const val = currentAns[opt.id] || '';
+                                const isBenar = (val === 'TRUE' || val === 'BENAR' || val === 'B');
+                                const isSalah = (val === 'FALSE' || val === 'SALAH' || val === 'S');
+                                return `
+                                    <tr style="border-bottom: 1px solid var(--border-color); background: ${sIdx % 2 === 0 ? '#ffffff' : 'var(--bg-base)'};">
+                                        <td style="padding: 12px 16px; vertical-align: middle; line-height: 1.5; color: var(--text-primary); font-weight: 500;">
+                                            ${escapeHtml(opt.text)}
+                                        </td>
+                                        <td style="padding: 12px 14px; text-align: center; vertical-align: middle;">
+                                            <label style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; cursor: pointer; margin: 0;">
+                                                <input type="radio" name="tf_${q.id}_${opt.id}" value="TRUE" ${isBenar ? 'checked' : ''} 
+                                                       onchange="handleTrueFalseAnswer('${q.id}', '${opt.id}', 'TRUE')" 
+                                                       style="width: 1.35rem; height: 1.35rem; cursor: pointer; accent-color: var(--primary-600);">
+                                            </label>
+                                        </td>
+                                        <td style="padding: 12px 14px; text-align: center; vertical-align: middle;">
+                                            <label style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; cursor: pointer; margin: 0;">
+                                                <input type="radio" name="tf_${q.id}_${opt.id}" value="FALSE" ${isSalah ? 'checked' : ''} 
+                                                       onchange="handleTrueFalseAnswer('${q.id}', '${opt.id}', 'FALSE')" 
+                                                       style="width: 1.35rem; height: 1.35rem; cursor: pointer; accent-color: var(--primary-600);">
+                                            </label>
+                                        </td>
+                                    </tr>
+                                `;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                </div>
+            `;
         } else if (q.type === 'MCQ_COMPLEX') {
             const answerArr = Array.isArray(answers) ? answers : [];
             optionsHtml = q.options.map(opt => {
@@ -3918,22 +4184,7 @@ Router.addRoute('/student/exam', async () => {
     };
 
     let autosaveTimeout = null;
-    window.handleAnswer = function(questionId, optionId, type, isChecked = true) {
-        if (type === 'MCQ' || type === 'TRUE_FALSE') {
-            AppState.answers[questionId] = optionId;
-        } else if (type === 'MCQ_COMPLEX') {
-            let current = AppState.answers[questionId] || [];
-            if (!Array.isArray(current)) current = [];
-            
-            if (isChecked) {
-                if (!current.includes(optionId)) current.push(optionId);
-            } else {
-                current = current.filter(id => id !== optionId);
-            }
-            AppState.answers[questionId] = current;
-        }
-        
-        // Debounced Autosave to backend
+    const triggerAutosave = () => {
         const indicator = document.getElementById('autosaveIndicator');
         if (indicator) {
             indicator.innerHTML = '<i class="ph ph-spinner ph-spin text-warning"></i> Menyimpan...';
@@ -3954,13 +4205,53 @@ Router.addRoute('/student/exam', async () => {
                 }
             }
         }, 600);
+    };
 
-        renderQuestion(currentIndex); // re-render to update UI states
+    window.handleAnswer = function(questionId, optionId, type, isChecked = true) {
+        if (type === 'MCQ') {
+            AppState.answers[questionId] = optionId;
+        } else if (type === 'MCQ_COMPLEX') {
+            let current = AppState.answers[questionId] || [];
+            if (!Array.isArray(current)) current = [];
+            
+            if (isChecked) {
+                if (!current.includes(optionId)) current.push(optionId);
+            } else {
+                current = current.filter(id => id !== optionId);
+            }
+            AppState.answers[questionId] = current;
+        }
+        
+        triggerAutosave();
+        renderQuestion(currentIndex);
+    };
+
+    window.handleTrueFalseAnswer = function(questionId, statementId, value) {
+        let current = AppState.answers[questionId];
+        if (!current || typeof current !== 'object' || Array.isArray(current)) {
+            current = {};
+        }
+        current[statementId] = value;
+        AppState.answers[questionId] = current;
+
+        triggerAutosave();
+        renderQuestion(currentIndex);
     };
 
     window.updateProgress = function() {
         const gridHtml = questions.map((q, idx) => {
-            const hasAnswer = AppState.answers[q.id] && (Array.isArray(AppState.answers[q.id]) ? AppState.answers[q.id].length > 0 : true);
+            let hasAnswer = false;
+            const ans = AppState.answers[q.id];
+            if (q.type === 'TRUE_FALSE') {
+                const stmts = (q.options || []);
+                if (stmts.length > 0 && ans && typeof ans === 'object' && !Array.isArray(ans)) {
+                    hasAnswer = stmts.every(s => ans[s.id] !== undefined && ans[s.id] !== '');
+                }
+            } else if (q.type === 'MCQ_COMPLEX') {
+                hasAnswer = Array.isArray(ans) && ans.length > 0;
+            } else {
+                hasAnswer = Boolean(ans);
+            }
             const isCurrent = idx === currentIndex;
             
             let bg = hasAnswer ? 'var(--primary-500)' : 'var(--bg-base)';

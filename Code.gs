@@ -182,8 +182,8 @@ function ensureDatabaseSchema() {
       "Jakarta", "Bandung", "Surabaya", "Medan", "Semarang"
     ]);
     tplSheet.appendRow([
-      2, "TRUE_FALSE", "Matahari terbit dari sebelah timur dan tenggelam di sebelah barat.", "", 10, "EXACT", "TRUE",
-      "Benar", "Salah", "", "", ""
+      2, "TRUE_FALSE", "Seorang murid memperkirakan banyaknya penonton suatu video di media sosial. Tentukan Benar atau Salah untuk setiap pernyataan berikut!", "", 10, "EXACT", "B,B,S",
+      "Video tersebut hanya ditonton oleh 3.000 penonton setelah tepat 24 jam diunggah.", "Banyaknya penonton video meningkat dua kali lipat dari hari sebelumnya untuk beberapa hari setelah diunggah.", "Model banyaknya penonton ini tidak tepat untuk waktu yang cukup besar.", "", ""
     ]);
     tplSheet.appendRow([
       3, "MCQ_COMPLEX", "Manakah bahasa pemrograman yang biasa digunakan untuk pengembangan web? (Pilih semua yang benar)", "", 20, "PARTIAL", "A,C",
@@ -766,13 +766,19 @@ function getQuestions(sessionId, examId) {
         } catch (e) {}
 
         if (q.type === "TRUE_FALSE") {
-          var tUp = String(parsedAnswer || "").trim().toUpperCase();
-          if (tUp === "FALSE" || tUp === "SALAH" || tUp === "S" || parsedAnswer === false) {
-            parsedAnswer = "FALSE";
-          } else if (tUp === "TRUE" || tUp === "BENAR" || tUp === "B" || parsedAnswer === true) {
-            parsedAnswer = "TRUE";
-          } else {
-            parsedAnswer = "FALSE";
+          if (typeof parsedAnswer === "string" && parsedAnswer.trim().startsWith("{")) {
+            try {
+              parsedAnswer = JSON.parse(parsedAnswer);
+            } catch (e) {}
+          } else if (typeof parsedAnswer !== "object") {
+            var tUp = String(parsedAnswer || "").trim().toUpperCase();
+            if (tUp === "FALSE" || tUp === "SALAH" || tUp === "S" || parsedAnswer === false) {
+              parsedAnswer = "FALSE";
+            } else if (tUp === "TRUE" || tUp === "BENAR" || tUp === "B" || parsedAnswer === true) {
+              parsedAnswer = "TRUE";
+            } else {
+              parsedAnswer = "FALSE";
+            }
           }
         }
 
@@ -835,12 +841,17 @@ function saveQuestions(sessionId, examId, questionsList) {
     for (var i = 0; i < questionsList.length; i++) {
       var q = questionsList[i];
       var qId = q.id && String(q.id).startsWith("Q_") ? q.id : ("Q_" + _generateId(8));
-      var correctStr = typeof q.correctAnswer === "object" ? JSON.stringify(q.correctAnswer) : (q.correctAnswer !== undefined && q.correctAnswer !== null ? String(q.correctAnswer) : "");
+      var correctStr = typeof q.correctAnswer === "object" && q.correctAnswer !== null ? JSON.stringify(q.correctAnswer) : (q.correctAnswer !== undefined && q.correctAnswer !== null ? String(q.correctAnswer) : "");
       if (q.type === "TRUE_FALSE") {
-        var cUp = correctStr.toUpperCase();
-        if (cUp === "FALSE" || cUp === "SALAH" || cUp === "S") correctStr = "FALSE";
-        else if (cUp === "TRUE" || cUp === "BENAR" || cUp === "B") correctStr = "TRUE";
-        else correctStr = "FALSE";
+        if (typeof q.correctAnswer === "object" && q.correctAnswer !== null) {
+          correctStr = JSON.stringify(q.correctAnswer);
+        } else {
+          var cUp = String(correctStr || "").trim().toUpperCase();
+          if (cUp === "FALSE" || cUp === "SALAH" || cUp === "S") correctStr = "FALSE";
+          else if (cUp === "TRUE" || cUp === "BENAR" || cUp === "B") correctStr = "TRUE";
+          else if (cUp.startsWith("{")) correctStr = cUp;
+          else correctStr = "FALSE";
+        }
       }
       var optionsList = q.options || [];
       if (Array.isArray(optionsList)) {
@@ -1245,18 +1256,93 @@ function submitExamAttempt(attemptId, finalAnswersMap) {
       }
 
       if (studentAns !== undefined && studentAns !== null) {
-        if (question.type === "MCQ" || question.type === "TRUE_FALSE") {
+        if (question.type === "MCQ") {
           var sAnsStr = String(studentAns).trim().toUpperCase();
           var cAnsStr = String(rawCAns).trim().toUpperCase();
-          if (question.type === "TRUE_FALSE") {
+          if (sAnsStr === cAnsStr && sAnsStr !== "") {
+            qScore = maxScore;
+            isQCorrect = true;
+          }
+        } else if (question.type === "TRUE_FALSE") {
+          var cMap = null;
+          if (typeof rawCAns === "object" && rawCAns !== null) {
+            cMap = rawCAns;
+          } else {
+            try {
+              if (String(rawCAns).trim().startsWith("{")) cMap = JSON.parse(rawCAns);
+            } catch (e) {}
+          }
+
+          var sMap = null;
+          if (typeof studentAns === "object" && studentAns !== null) {
+            sMap = studentAns;
+          } else {
+            try {
+              if (String(studentAns).trim().startsWith("{")) sMap = JSON.parse(studentAns);
+            } catch (e) {}
+          }
+
+          if (cMap && typeof cMap === "object") {
+            // Multi-statement evaluation
+            var qOptions = [];
+            try {
+              qOptions = JSON.parse(question.optionsJson || "[]");
+            } catch (e) {}
+            var totalStmts = qOptions.length > 0 ? qOptions.length : Object.keys(cMap).length;
+            var correctCount = 0;
+
+            if (qOptions.length > 0) {
+              for (var oi = 0; oi < qOptions.length; oi++) {
+                var sId = String(qOptions[oi].id);
+                var sVal = sMap ? String(sMap[sId] || "").trim().toUpperCase() : "";
+                var cVal = cMap ? String(cMap[sId] || "").trim().toUpperCase() : "";
+                if (sVal === "BENAR" || sVal === "B") sVal = "TRUE";
+                if (sVal === "SALAH" || sVal === "S") sVal = "FALSE";
+                if (cVal === "BENAR" || cVal === "B") cVal = "TRUE";
+                if (cVal === "SALAH" || cVal === "S") cVal = "FALSE";
+                if (sVal && cVal && sVal === cVal) {
+                  correctCount++;
+                }
+              }
+            } else {
+              for (var kId in cMap) {
+                var sV = sMap ? String(sMap[kId] || "").trim().toUpperCase() : "";
+                var cV = String(cMap[kId] || "").trim().toUpperCase();
+                if (sV === "BENAR" || sV === "B") sV = "TRUE";
+                if (sV === "SALAH" || sV === "S") sV = "FALSE";
+                if (cV === "BENAR" || cV === "B") cV = "TRUE";
+                if (cV === "SALAH" || cV === "S") cV = "FALSE";
+                if (sV && cV && sV === cV) {
+                  correctCount++;
+                }
+              }
+            }
+
+            if (question.scoringMethod === "PARTIAL") {
+              var ratio = totalStmts > 0 ? (correctCount / totalStmts) : 0;
+              qScore = Math.round(maxScore * ratio * 100) / 100;
+              if (correctCount === totalStmts && totalStmts > 0) isQCorrect = true;
+            } else {
+              if (correctCount === totalStmts && totalStmts > 0) {
+                qScore = maxScore;
+                isQCorrect = true;
+              } else {
+                qScore = 0;
+                isQCorrect = false;
+              }
+            }
+          } else {
+            // Fallback for single TRUE_FALSE
+            var sAnsStr = String(studentAns).trim().toUpperCase();
+            var cAnsStr = String(rawCAns).trim().toUpperCase();
             if (sAnsStr === "SALAH" || sAnsStr === "FALSE" || sAnsStr === "S") sAnsStr = "FALSE";
             if (sAnsStr === "BENAR" || sAnsStr === "TRUE" || sAnsStr === "B") sAnsStr = "TRUE";
             if (cAnsStr === "SALAH" || cAnsStr === "FALSE" || cAnsStr === "S") cAnsStr = "FALSE";
             if (cAnsStr === "BENAR" || cAnsStr === "TRUE" || cAnsStr === "B") cAnsStr = "TRUE";
-          }
-          if (sAnsStr === cAnsStr && sAnsStr !== "") {
-            qScore = maxScore;
-            isQCorrect = true;
+            if (sAnsStr === cAnsStr && sAnsStr !== "") {
+              qScore = maxScore;
+              isQCorrect = true;
+            }
           }
         } else if (question.type === "MCQ_COMPLEX") {
           var correctList = [];
@@ -1603,24 +1689,19 @@ function getStudentAttemptDetail(sessionId, attemptId) {
       // Ensure normalized correctAnswer, especially for TRUE_FALSE
       var normalizedCorrect = q.correctAnswer;
       if (q.type === "TRUE_FALSE") {
-        var cUp = String(normalizedCorrect || "").trim().toUpperCase();
-        if (cUp === "FALSE" || cUp === "SALAH" || cUp === "S" || normalizedCorrect === false) {
-          normalizedCorrect = "FALSE";
-        } else if (cUp === "TRUE" || cUp === "BENAR" || cUp === "B" || normalizedCorrect === true) {
-          normalizedCorrect = "TRUE";
-        } else {
-          normalizedCorrect = "FALSE";
-          // Self-heal Q in sheet if empty
+        if (typeof normalizedCorrect === "string" && normalizedCorrect.trim().startsWith("{")) {
           try {
-            var qSheet = _getSheet(CONFIG.SHEETS.QUESTIONS);
-            var qVals = qSheet.getDataRange().getValues();
-            for (var qr = 1; qr < qVals.length; qr++) {
-              if (qVals[qr][0] === q.questionId && (!qVals[qr][8] || qVals[qr][8] === "")) {
-                qSheet.getRange(qr + 1, 9).setValue("FALSE");
-                break;
-              }
-            }
+            normalizedCorrect = JSON.parse(normalizedCorrect);
           } catch (e) {}
+        } else if (typeof normalizedCorrect !== "object") {
+          var cUp = String(normalizedCorrect || "").trim().toUpperCase();
+          if (cUp === "FALSE" || cUp === "SALAH" || cUp === "S" || normalizedCorrect === false) {
+            normalizedCorrect = "FALSE";
+          } else if (cUp === "TRUE" || cUp === "BENAR" || cUp === "B" || normalizedCorrect === true) {
+            normalizedCorrect = "TRUE";
+          } else {
+            normalizedCorrect = "FALSE";
+          }
         }
       }
 
@@ -1634,17 +1715,59 @@ function getStudentAttemptDetail(sessionId, attemptId) {
             qScore = maxScore;
           }
         } else if (q.type === "TRUE_FALSE") {
-          var sStr = String(parsedStudentAnswer).trim().toUpperCase();
-          if (sStr === "SALAH" || sStr === "S" || parsedStudentAnswer === false) sStr = "FALSE";
-          if (sStr === "BENAR" || sStr === "B" || parsedStudentAnswer === true) sStr = "TRUE";
+          if (typeof normalizedCorrect === "object" && normalizedCorrect !== null) {
+            var cMap = normalizedCorrect;
+            var sMap = (typeof parsedStudentAnswer === "object" && parsedStudentAnswer !== null) ? parsedStudentAnswer : {};
+            var totalStmts = parsedOptions.length > 0 ? parsedOptions.length : Object.keys(cMap).length;
+            var correctCount = 0;
+            if (parsedOptions.length > 0) {
+              for (var oi = 0; oi < parsedOptions.length; oi++) {
+                var sId = String(parsedOptions[oi].id);
+                var sVal = String(sMap[sId] || "").trim().toUpperCase();
+                var cVal = String(cMap[sId] || "").trim().toUpperCase();
+                if (sVal === "BENAR" || sVal === "B") sVal = "TRUE";
+                if (sVal === "SALAH" || sVal === "S") sVal = "FALSE";
+                if (cVal === "BENAR" || cVal === "B") cVal = "TRUE";
+                if (cVal === "SALAH" || cVal === "S") cVal = "FALSE";
+                if (sVal && cVal && sVal === cVal) correctCount++;
+              }
+            } else {
+              for (var kId in cMap) {
+                var sV = String(sMap[kId] || "").trim().toUpperCase();
+                var cV = String(cMap[kId] || "").trim().toUpperCase();
+                if (sV === "BENAR" || sV === "B") sV = "TRUE";
+                if (sV === "SALAH" || sV === "S") sV = "FALSE";
+                if (cV === "BENAR" || cV === "B") cV = "TRUE";
+                if (cV === "SALAH" || cV === "S") cV = "FALSE";
+                if (sV && cV && sV === cV) correctCount++;
+              }
+            }
+            if (q.scoringMethod === "PARTIAL") {
+              var ratio = totalStmts > 0 ? (correctCount / totalStmts) : 0;
+              qScore = Math.round(maxScore * ratio * 100) / 100;
+              isCorr = (correctCount === totalStmts && totalStmts > 0);
+            } else {
+              if (correctCount === totalStmts && totalStmts > 0) {
+                qScore = maxScore;
+                isCorr = true;
+              } else {
+                qScore = 0;
+                isCorr = false;
+              }
+            }
+          } else {
+            var sStr = String(parsedStudentAnswer).trim().toUpperCase();
+            if (sStr === "SALAH" || sStr === "S" || parsedStudentAnswer === false) sStr = "FALSE";
+            if (sStr === "BENAR" || sStr === "B" || parsedStudentAnswer === true) sStr = "TRUE";
 
-          var cStr = String(normalizedCorrect || "").trim().toUpperCase();
-          if (cStr === "SALAH" || cStr === "S" || normalizedCorrect === false) cStr = "FALSE";
-          if (cStr === "BENAR" || cStr === "B" || normalizedCorrect === true) cStr = "TRUE";
+            var cStr = String(normalizedCorrect || "").trim().toUpperCase();
+            if (cStr === "SALAH" || cStr === "S" || normalizedCorrect === false) cStr = "FALSE";
+            if (cStr === "BENAR" || cStr === "B" || normalizedCorrect === true) cStr = "TRUE";
 
-          if (sStr === cStr && sStr !== "") {
-            isCorr = true;
-            qScore = maxScore;
+            if (sStr === cStr && sStr !== "") {
+              isCorr = true;
+              qScore = maxScore;
+            }
           }
         } else if (q.type === "MCQ_COMPLEX") {
           var sList = Array.isArray(parsedStudentAnswer) ? parsedStudentAnswer : [parsedStudentAnswer];

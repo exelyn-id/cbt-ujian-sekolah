@@ -327,27 +327,96 @@ window.showStudentDetail = async function(attemptId) {
                         </div>
                     ` : ''}
 
-                    <!-- Jawaban Siswa -->
-                    <div class="ans-box ${isCorr ? 'ans-box-student-correct' : 'ans-box-student-wrong'}">
-                        <div class="ans-icon-wrap">
-                            <i class="ph ${isCorr ? 'ph-check-circle' : 'ph-x-circle'}" style="font-size: 1.25rem;"></i>
-                        </div>
-                        <div class="ans-content-wrap">
-                            <div class="text-xs font-bold" style="text-transform: uppercase; letter-spacing: 0.04em;">Jawaban Siswa:</div>
-                            <div class="font-medium mt-1" style="font-size: 0.92rem; line-height: 1.5;">${studentAnsText}</div>
-                        </div>
-                    </div>
+                    ${q.type === 'TRUE_FALSE' ? (() => {
+                        let sMap = {};
+                        if (typeof q.studentAnswer === 'object' && q.studentAnswer !== null) {
+                            sMap = q.studentAnswer;
+                        } else if (typeof q.studentAnswer === 'string' && q.studentAnswer.trim().startsWith('{')) {
+                            try { sMap = JSON.parse(q.studentAnswer); } catch (e) { sMap = {}; }
+                        } else if (q.studentAnswer) {
+                            sMap = { '1': q.studentAnswer };
+                        }
 
-                    <!-- Kunci Jawaban Resmi Guru -->
-                    <div class="ans-box ans-box-key">
-                        <div class="ans-icon-wrap">
-                            <i class="ph ph-key" style="font-size: 1.25rem;"></i>
+                        let cMap = {};
+                        if (typeof q.correctAnswer === 'object' && q.correctAnswer !== null) {
+                            cMap = q.correctAnswer;
+                        } else if (typeof q.correctAnswer === 'string' && q.correctAnswer.trim().startsWith('{')) {
+                            try { cMap = JSON.parse(q.correctAnswer); } catch (e) { cMap = {}; }
+                        } else if (q.correctAnswer) {
+                            cMap = { '1': q.correctAnswer };
+                        }
+
+                        let statements = q.options || [];
+                        if (statements.length === 2 && (statements[0].id === 'TRUE' || statements[0].text === 'Benar')) {
+                            statements = [{ id: '1', text: q.questionText }];
+                        }
+
+                        return `
+                            <div style="overflow-x: auto; margin-top: 0.5rem; margin-bottom: 0.75rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: #ffffff;">
+                                <table style="width: 100%; border-collapse: collapse; font-size: 0.84rem; text-align: left;">
+                                    <thead>
+                                        <tr style="background: #e0f2fe; color: #0369a1; border-bottom: 2px solid #bae6fd;">
+                                            <th style="padding: 8px 12px; width: 35px; text-align: center;">No</th>
+                                            <th style="padding: 8px 12px;">Pernyataan</th>
+                                            <th style="padding: 8px 12px; width: 110px; text-align: center;">Jawaban Siswa</th>
+                                            <th style="padding: 8px 12px; width: 100px; text-align: center;">Kunci Resmi</th>
+                                            <th style="padding: 8px 12px; width: 85px; text-align: center;">Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        ${statements.map((st, sIdx) => {
+                                            let sVal = (sMap && sMap[st.id] !== undefined) ? String(sMap[st.id]).trim().toUpperCase() : '';
+                                            let cVal = (cMap && cMap[st.id] !== undefined) ? String(cMap[st.id]).trim().toUpperCase() : '';
+                                            if (sVal === 'BENAR' || sVal === 'B') sVal = 'TRUE';
+                                            if (sVal === 'SALAH' || sVal === 'S') sVal = 'FALSE';
+                                            if (cVal === 'BENAR' || cVal === 'B') cVal = 'TRUE';
+                                            if (cVal === 'SALAH' || cVal === 'S') cVal = 'FALSE';
+
+                                            const isStmtCorrect = sVal && cVal && sVal === cVal;
+                                            const sText = sVal === 'TRUE' ? '<span class="text-success font-semibold">Benar</span>' : (sVal === 'FALSE' ? '<span class="text-error font-semibold">Salah</span>' : '<span class="text-muted italic">-</span>');
+                                            const cText = cVal === 'TRUE' ? '<span class="text-success font-semibold">Benar</span>' : (cVal === 'FALSE' ? '<span class="text-error font-semibold">Salah</span>' : '-');
+
+                                            return `
+                                                <tr style="border-bottom: 1px solid var(--border-color); background: ${sIdx % 2 === 0 ? '#ffffff' : 'var(--bg-base)'};">
+                                                    <td style="padding: 8px 12px; text-align: center; font-weight: bold; color: var(--text-secondary); vertical-align: middle;">${sIdx + 1}</td>
+                                                    <td style="padding: 8px 12px; vertical-align: middle; line-height: 1.45; color: var(--text-primary); font-weight: 500;">${escapeHtml(st.text)}</td>
+                                                    <td style="padding: 8px 12px; text-align: center; vertical-align: middle;">${sText}</td>
+                                                    <td style="padding: 8px 12px; text-align: center; vertical-align: middle;">${cText}</td>
+                                                    <td style="padding: 8px 12px; text-align: center; vertical-align: middle;">
+                                                        <span class="badge ${isStmtCorrect ? 'badge-active' : 'badge-archived'}" style="font-size: 0.72rem; padding: 2px 6px;">
+                                                            ${isStmtCorrect ? '<i class="ph ph-check"></i> Tepat' : '<i class="ph ph-x"></i> Keliru'}
+                                                        </span>
+                                                    </td>
+                                                </tr>
+                                            `;
+                                        }).join('')}
+                                    </tbody>
+                                </table>
+                            </div>
+                        `;
+                    })() : `
+                        <!-- Jawaban Siswa -->
+                        <div class="ans-box ${isCorr ? 'ans-box-student-correct' : 'ans-box-student-wrong'}">
+                            <div class="ans-icon-wrap">
+                                <i class="ph ${isCorr ? 'ph-check-circle' : 'ph-x-circle'}" style="font-size: 1.25rem;"></i>
+                            </div>
+                            <div class="ans-content-wrap">
+                                <div class="text-xs font-bold" style="text-transform: uppercase; letter-spacing: 0.04em;">Jawaban Siswa:</div>
+                                <div class="font-medium mt-1" style="font-size: 0.92rem; line-height: 1.5;">${studentAnsText}</div>
+                            </div>
                         </div>
-                        <div class="ans-content-wrap">
-                            <div class="text-xs font-bold" style="text-transform: uppercase; letter-spacing: 0.04em;">Kunci Jawaban Resmi:</div>
-                            <div class="font-medium mt-1" style="font-size: 0.92rem; line-height: 1.5;">${keyText}</div>
+
+                        <!-- Kunci Jawaban Resmi Guru -->
+                        <div class="ans-box ans-box-key">
+                            <div class="ans-icon-wrap">
+                                <i class="ph ph-key" style="font-size: 1.25rem;"></i>
+                            </div>
+                            <div class="ans-content-wrap">
+                                <div class="text-xs font-bold" style="text-transform: uppercase; letter-spacing: 0.04em;">Kunci Jawaban Resmi:</div>
+                                <div class="font-medium mt-1" style="font-size: 0.92rem; line-height: 1.5;">${keyText}</div>
+                            </div>
                         </div>
-                    </div>
+                    `}
 
                     ${q.explanation ? `
                         <div class="mt-2.5 p-2.5 text-xs" style="background: var(--bg-base); border-radius: var(--radius-sm); border-left: 3px solid var(--info); color: var(--text-secondary); line-height: 1.45;">
