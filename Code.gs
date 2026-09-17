@@ -109,7 +109,7 @@ function ensureDatabaseSchema() {
     "ID Ujian", "ID Guru Pemilik", "Judul Ujian", "Mata Pelajaran", "Materi Pokok", "Kelas",
     "Deskripsi", "Petunjuk Pengerjaan", "Durasi (Menit)", "Waktu Mulai", "Waktu Selesai",
     "KKM", "Maksimal Percobaan", "Metode Penilaian", "Acak Soal", "Acak Opsi",
-    "Tampilkan Nilai", "Status", "Dibuat Pada", "Diperbarui Pada"
+    "Tampilkan Nilai", "Status", "Dibuat Pada", "Diperbarui Pada", "Tampilkan di Portal"
   ];
 
   // Sheet: Questions (Bank Soal)
@@ -377,7 +377,7 @@ function loginTeacher(username, password) {
         userId: FICTITIOUS_USERS[inputUser].id,
         username: inputUser,
         name: FICTITIOUS_USERS[inputUser].name,
-        role: "TEACHER"
+        role: inputUser === "admin" ? "ADMIN" : "TEACHER"
       };
     }
 
@@ -385,14 +385,19 @@ function loginTeacher(username, password) {
       return _response(false, null, "Username atau password salah.");
     }
 
+    var assignedRole = "TEACHER";
+    if (inputUser === "admin" || (matchedUser.userId && matchedUser.userId.indexOf("ADM") === 0) || String(matchedUser.role || "").toUpperCase() === "ADMIN") {
+      assignedRole = "ADMIN";
+    }
+
     // Create session
     var sessionId = "SES_" + _generateId(16);
     var sessionData = {
       sessionId: sessionId,
-      teacherId: matchedUser.userId || "TCH_001",
-      teacherName: matchedUser.name || "Pak Andi Guru",
-      username: matchedUser.username || "andi",
-      role: "TEACHER",
+      teacherId: matchedUser.userId || (assignedRole === "ADMIN" ? "ADM_001" : "TCH_001"),
+      teacherName: matchedUser.name || (assignedRole === "ADMIN" ? "Administrator" : "Guru"),
+      username: matchedUser.username || inputUser,
+      role: assignedRole,
       createdAt: new Date().getTime()
     };
 
@@ -405,13 +410,14 @@ function loginTeacher(username, password) {
       console.warn("CacheService warning:", cacheErr);
     }
 
-    _logAction("TEACHER", matchedUser.userId, "LOGIN", "USER", matchedUser.userId, "SUCCESS", "Login berhasil");
+    _logAction(assignedRole, matchedUser.userId, "LOGIN", "USER", matchedUser.userId, "SUCCESS", "Login berhasil");
 
     return _response(true, {
       sessionId: sessionId,
-      teacherId: matchedUser.userId || "TCH_001",
-      teacherName: matchedUser.name || "Pak Andi Guru",
-      role: "TEACHER"
+      teacherId: matchedUser.userId || (assignedRole === "ADMIN" ? "ADM_001" : "TCH_001"),
+      teacherName: matchedUser.name || (assignedRole === "ADMIN" ? "Administrator" : "Guru"),
+      username: matchedUser.username || inputUser,
+      role: assignedRole
     }, "Login berhasil");
 
   } catch (err) {
@@ -470,12 +476,19 @@ function getTeacherExams(sessionId) {
     var allExams = _getTableData(CONFIG.SHEETS.EXAMS);
     var allAttempts = _getTableData(CONFIG.SHEETS.ATTEMPTS);
     var allQuestions = _getTableData(CONFIG.SHEETS.QUESTIONS);
+    var allUsers = _getTableData(CONFIG.SHEETS.USERS);
+
+    var userMap = {};
+    for (var u = 0; u < allUsers.length; u++) {
+      userMap[allUsers[u].userId] = allUsers[u].name || allUsers[u].username || "Guru";
+    }
 
     var teacherExams = [];
 
     for (var i = 0; i < allExams.length; i++) {
       var ex = allExams[i];
-      if (ex.ownerTeacherId === user.teacherId && ex.status !== "ARCHIVED") {
+      var canAccess = (user.role === "ADMIN") || (ex.ownerTeacherId === user.teacherId);
+      if (canAccess && ex.status !== "ARCHIVED") {
         // Calculate participants & average score
         var examAttempts = allAttempts.filter(function(a) { 
           return a.examId === ex.examId && a.status === "SUBMITTED"; 
@@ -492,13 +505,18 @@ function getTeacherExams(sessionId) {
           return q.examId === ex.examId && q.status !== "ARCHIVED";
         }).length;
 
+        var showInPortal = (ex.showInPortal === "" || ex.showInPortal === undefined || ex.showInPortal === null) ? true : (String(ex.showInPortal).toLowerCase() !== "false" && String(ex.showInPortal) !== "0");
+
         teacherExams.push({
           examId: ex.examId,
+          ownerTeacherId: ex.ownerTeacherId,
+          ownerTeacherName: userMap[ex.ownerTeacherId] || "Guru",
           title: ex.title,
           subject: ex.subject,
           material: ex.material || "",
           className: ex.className,
           status: ex.status,
+          showInPortal: showInPortal,
           durationMinutes: Number(ex.durationMinutes || 60),
           totalQuestions: qCount,
           participantCount: examAttempts.length,
@@ -565,7 +583,7 @@ function saveExam(sessionId, examData) {
     if (examData.examId) {
       for (var r = 1; r < data.length; r++) {
         if (data[r][0] === examData.examId) {
-          if (data[r][1] !== user.teacherId) {
+          if (data[r][1] !== user.teacherId && user.role !== "ADMIN") {
             return _response(false, null, "Akses ditolak.");
           }
           targetRow = r + 1;
@@ -576,10 +594,19 @@ function saveExam(sessionId, examData) {
     }
 
     var examId = isEdit ? examData.examId : ("EXM_" + _generateId(8));
+    var ownerId = isEdit ? data[targetRow - 1][1] : user.teacherId;
+
+    var showPortalVal = "TRUE";
+    if (examData.showInPortal !== undefined) {
+      showPortalVal = examData.showInPortal ? "TRUE" : "FALSE";
+    } else if (isEdit && data[targetRow - 1].length > 20) {
+      var oldPortal = data[targetRow - 1][20];
+      showPortalVal = (oldPortal === "" || oldPortal === undefined) ? "TRUE" : oldPortal;
+    }
 
     var rowValues = [
       examId,
-      user.teacherId,
+      ownerId,
       examData.title,
       examData.subject,
       examData.material || "",
@@ -597,7 +624,8 @@ function saveExam(sessionId, examData) {
       Boolean(examData.showResult !== false),
       examData.status || "DRAFT",
       isEdit ? data[targetRow - 1][18] : now,
-      now
+      now,
+      showPortalVal
     ];
 
     if (isEdit) {
@@ -628,7 +656,7 @@ function deleteExam(sessionId, examId) {
 
     for (var r = 1; r < data.length; r++) {
       if (data[r][0] === examId) {
-        if (data[r][1] !== user.teacherId) {
+        if (data[r][1] !== user.teacherId && user.role !== "ADMIN") {
           return _response(false, null, "Akses ditolak.");
         }
         // Set status to ARCHIVED
@@ -641,6 +669,91 @@ function deleteExam(sessionId, examId) {
   } catch (err) {
     console.error("deleteExam error:", err);
     return _response(false, null, "Gagal menghapus ujian.");
+  }
+}
+
+/**
+ * Toggles or updates the visibility of an exam on the student portal.
+ * Accessible by ADMIN or the owner teacher.
+ */
+function toggleExamPortalVisibility(sessionId, examId, showInPortal) {
+  var lock = LockService.getScriptLock();
+  try {
+    lock.waitLock(10000);
+    var user = _verifySession(sessionId);
+    if (!user) return _response(false, null, "Sesi Anda telah berakhir. Silakan login kembali.");
+
+    ensureDatabaseSchema();
+    var sheet = _getSheet(CONFIG.SHEETS.EXAMS);
+    var data = sheet.getDataRange().getValues();
+    if (data.length <= 1) return _response(false, null, "Data ujian kosong.");
+
+    var headers = data[0];
+    var colExamId = -1;
+    var colTeacherId = -1;
+    var colPortal = -1;
+
+    for (var c = 0; c < headers.length; c++) {
+      var h = String(headers[c] || "").trim();
+      if (h === "ID Ujian" || h === "examId") colExamId = c;
+      if (h === "ID Guru Pemilik" || h === "ownerTeacherId") colTeacherId = c;
+      if (h === "Tampilkan di Portal" || h === "showInPortal" || h === "showOnStudentPortal") colPortal = c;
+    }
+
+    if (colExamId === -1) colExamId = 0;
+    if (colTeacherId === -1) colTeacherId = 1;
+
+    // If column "Tampilkan di Portal" does not exist yet, add it to header
+    if (colPortal === -1) {
+      colPortal = headers.length;
+      sheet.getRange(1, colPortal + 1).setValue("Tampilkan di Portal").setFontWeight("bold").setBackground("#e2e8f0");
+    }
+
+    var targetRow = -1;
+    var currentOwner = "";
+    var currentVisibility = true;
+
+    for (var r = 1; r < data.length; r++) {
+      if (String(data[r][colExamId]).trim() === String(examId).trim()) {
+        targetRow = r + 1;
+        currentOwner = (colTeacherId !== -1) ? String(data[r][colTeacherId]) : "";
+        if (colPortal < data[r].length) {
+          var val = data[r][colPortal];
+          currentVisibility = (val === "" || val === undefined || val === null) ? true : (String(val).toLowerCase() !== "false" && String(val) !== "0");
+        }
+        break;
+      }
+    }
+
+    if (targetRow === -1) {
+      return _response(false, null, "Ujian tidak ditemukan.");
+    }
+
+    // Authorization: Admin or Owner Teacher
+    if (user.role !== "ADMIN" && user.teacherId !== currentOwner) {
+      return _response(false, null, "Hanya Administrator atau guru pemilik yang dapat mengubah visibilitas portal ujian ini.");
+    }
+
+    var newVisibility;
+    if (typeof showInPortal === "boolean") {
+      newVisibility = showInPortal;
+    } else if (typeof showInPortal === "string") {
+      newVisibility = (showInPortal.toLowerCase() === "true" || showInPortal === "1");
+    } else {
+      newVisibility = !currentVisibility; // Toggle
+    }
+
+    sheet.getRange(targetRow, colPortal + 1).setValue(newVisibility ? "TRUE" : "FALSE");
+    sheet.getRange(targetRow, 20).setValue(new Date().toISOString());
+
+    _logAction(user.role, user.teacherId, "TOGGLE_PORTAL", "EXAM", examId, "SUCCESS", "Visibilitas portal diubah menjadi " + (newVisibility ? "TAMPIL" : "SEMBUNYI"));
+
+    return _response(true, { examId: examId, showInPortal: newVisibility }, "Visibilitas ujian di portal siswa berhasil " + (newVisibility ? "diaktifkan (Tampil)" : "dinonaktifkan (Disembunyikan)") + ".");
+  } catch (err) {
+    console.error("toggleExamPortalVisibility error:", err);
+    return _response(false, null, "Gagal mengubah visibilitas ujian: " + err.message);
+  } finally {
+    lock.releaseLock();
   }
 }
 
@@ -915,6 +1028,10 @@ function getActivePublicExams() {
     for (var i = 0; i < exams.length; i++) {
       var e = exams[i];
       if (String(e.status || "").toUpperCase() !== "ACTIVE") continue;
+
+      // Check visibility on student portal (managed by Admin)
+      var isPortalVisible = (e.showInPortal === "" || e.showInPortal === undefined || e.showInPortal === null) ? true : (String(e.showInPortal).toLowerCase() !== "false" && String(e.showInPortal) !== "0");
+      if (!isPortalVisible) continue;
 
       // Check date boundaries if configured
       if (e.startAt && new Date(e.startAt).getTime() > now) {
@@ -2097,8 +2214,8 @@ var HEADER_MAP = {
   "Maksimal Percobaan": ["maxAttempts"], "maxAttempts": ["maxAttempts"],
   "Metode Penilaian": ["attemptScoring", "scoringMethod"], "attemptScoring": ["attemptScoring"], "scoringMethod": ["scoringMethod"],
   "Acak Soal": ["randomizeQuestions"], "randomizeQuestions": ["randomizeQuestions"],
-  "Acak Opsi": ["randomizeOptions"], "randomizeOptions": ["randomizeOptions"],
   "Tampilkan Nilai": ["showResult"], "showResult": ["showResult"],
+  "Tampilkan di Portal": ["showInPortal", "showOnStudentPortal"], "showInPortal": ["showInPortal", "showOnStudentPortal"], "showOnStudentPortal": ["showInPortal", "showOnStudentPortal"],
 
   // Questions
   "ID Soal": ["questionId"], "questionId": ["questionId"],

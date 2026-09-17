@@ -177,13 +177,15 @@ const api = {
         const u = String(username).trim().toLowerCase();
         const p = String(password).trim();
         if (mockUsers[u] && mockUsers[u].pass === p) {
+            const role = (u === 'admin' || mockUsers[u].id.startsWith('ADM')) ? 'ADMIN' : 'TEACHER';
             return {
                 success: true,
                 data: {
                     sessionId: 'MOCK_SES_' + u,
                     teacherId: mockUsers[u].id,
                     teacherName: mockUsers[u].name,
-                    role: 'TEACHER'
+                    username: u,
+                    role: role
                 },
                 message: 'Login berhasil'
             };
@@ -205,8 +207,30 @@ const api = {
         const db = _getMockDB();
         return {
             success: true,
-            data: db.exams.filter(e => e.status !== 'ARCHIVED')
+            data: (db.exams || []).filter(e => e.status !== 'ARCHIVED').map(e => ({
+                ...e,
+                showInPortal: e.showInPortal !== false
+            }))
         };
+    },
+
+    async toggleExamPortalVisibility(sessionId, examId, showInPortal) {
+        if (isGAS) return _callGAS('toggleExamPortalVisibility', sessionId, examId, showInPortal);
+
+        await this._delay();
+        const db = _getMockDB();
+        const exam = (db.exams || []).find(e => e.examId === examId);
+        if (exam) {
+            const newVis = (showInPortal !== undefined) ? Boolean(showInPortal) : (exam.showInPortal === false);
+            exam.showInPortal = newVis;
+            _saveMockDB(db);
+            return {
+                success: true,
+                data: { examId, showInPortal: newVis },
+                message: 'Visibilitas ujian di portal siswa berhasil ' + (newVis ? 'diaktifkan (Tampil)' : 'dinonaktifkan (Disembunyikan)') + '.'
+            };
+        }
+        return { success: false, data: null, message: 'Ujian tidak ditemukan.' };
     },
 
     async getExam(sessionId, examId) {
@@ -310,7 +334,7 @@ const api = {
 
         await this._delay();
         const db = _getMockDB();
-        const activeList = (db.exams || []).filter(e => e.status === 'ACTIVE').map(e => ({
+        const activeList = (db.exams || []).filter(e => e.status === 'ACTIVE' && e.showInPortal !== false).map(e => ({
             examId: e.examId,
             title: e.title,
             subject: e.subject,

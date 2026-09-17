@@ -1,9 +1,11 @@
 Router.addRoute('/dashboard', async () => {
-    // Check auth
-    if (!AppState.user || AppState.user.role !== 'TEACHER') {
+    // Check auth (supports both TEACHER and ADMIN)
+    if (!AppState.user || (AppState.user.role !== 'TEACHER' && AppState.user.role !== 'ADMIN')) {
         setTimeout(() => Router.navigate('/login'), 0);
         return `<div class="loading-full">Mengalihkan...</div>`;
     }
+
+    const isAdmin = AppState.user && AppState.user.role === 'ADMIN';
 
     // Fetch exams
     const sessionId = AppState.user.sessionId;
@@ -31,10 +33,24 @@ Router.addRoute('/dashboard', async () => {
     } else {
         const rows = exams.map(e => `
             <tr style="border-bottom: 1px solid var(--border-color);">
-                <td class="py-3 px-4 font-medium">${e.title}</td>
-                <td class="py-3 px-4 text-sm">${e.subject} - ${e.className}</td>
+                <td class="py-3 px-4 font-medium">
+                    <div style="line-height: 1.35;">${escapeHtml(e.title)}</div>
+                    ${isAdmin && e.ownerTeacherName ? `<div class="text-xs text-muted font-normal mt-0.5 flex items-center gap-1"><i class="ph ph-chalkboard-teacher"></i> ${escapeHtml(e.ownerTeacherName)}</div>` : ''}
+                </td>
+                <td class="py-3 px-4 text-sm">${escapeHtml(e.subject)} - ${escapeHtml(e.className)}</td>
                 <td class="py-3 px-4">
-                    <span class="badge badge-${e.status.toLowerCase()}">${e.status}</span>
+                    <span class="badge badge-${(e.status || '').toLowerCase()}">${e.status}</span>
+                </td>
+                <td class="py-3 px-4 text-center">
+                    <button class="btn btn-sm ${e.showInPortal !== false ? 'btn-portal-active' : 'btn-portal-inactive'}"
+                            id="portal-btn-${e.examId}"
+                            onclick="${isAdmin ? `handleTogglePortal('${e.examId}', ${e.showInPortal !== false})` : ''}"
+                            title="${isAdmin ? (e.showInPortal !== false ? 'Klik untuk sembunyikan dari portal siswa' : 'Klik untuk tampilkan di portal siswa') : (e.showInPortal !== false ? 'Tampil di portal siswa' : 'Disembunyikan dari portal siswa')}"
+                            ${!isAdmin ? 'disabled style="cursor: default;"' : ''}
+                            style="padding: 0.25rem 0.65rem; font-size: 0.75rem; border-radius: var(--radius-full); font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+                        <i class="ph ${e.showInPortal !== false ? 'ph-eye' : 'ph-eye-slash'}"></i>
+                        <span>${e.showInPortal !== false ? 'Tampil' : 'Sembunyi'}</span>
+                    </button>
                 </td>
                 <td class="py-3 px-4 text-sm text-center">${e.participantCount}</td>
                 <td class="py-3 px-4 text-center">
@@ -66,16 +82,33 @@ Router.addRoute('/dashboard', async () => {
             <div class="exam-card-mobile">
                 <div class="card-header-mobile">
                     <div>
-                        <div class="exam-title-mobile">${e.title}</div>
+                        <div class="exam-title-mobile">${escapeHtml(e.title)}</div>
+                        ${isAdmin && e.ownerTeacherName ? `<div class="text-xs text-muted mt-0.5"><i class="ph ph-chalkboard-teacher"></i> Guru: <strong>${escapeHtml(e.ownerTeacherName)}</strong></div>` : ''}
                         <div class="meta-tags mt-2">
-                            <span class="meta-tag"><i class="ph ph-book-open"></i> ${e.subject}</span>
-                            <span class="meta-tag"><i class="ph ph-chalkboard-teacher"></i> ${e.className}</span>
+                            <span class="meta-tag"><i class="ph ph-book-open"></i> ${escapeHtml(e.subject)}</span>
+                            <span class="meta-tag"><i class="ph ph-chalkboard-teacher"></i> ${escapeHtml(e.className)}</span>
                             <span class="meta-tag"><i class="ph ph-users"></i> ${e.participantCount} Peserta</span>
                         </div>
                     </div>
                     <div>
-                        <span class="badge badge-${e.status.toLowerCase()}">${e.status}</span>
+                        <span class="badge badge-${(e.status || '').toLowerCase()}">${e.status}</span>
                     </div>
+                </div>
+
+                <!-- Visibilitas di Portal Siswa -->
+                <div class="flex justify-between items-center py-2 px-2.5 my-2.5" style="background: var(--bg-base); border-radius: var(--radius-sm); border: 1px solid var(--border-color); font-size: 0.8rem;">
+                    <span class="text-secondary font-medium flex items-center gap-1.5">
+                        <i class="ph ph-squares-four text-primary"></i> Portal Siswa:
+                    </span>
+                    <button class="btn btn-sm ${e.showInPortal !== false ? 'btn-portal-active' : 'btn-portal-inactive'}"
+                            id="mobile-portal-btn-${e.examId}"
+                            onclick="${isAdmin ? `handleTogglePortal('${e.examId}', ${e.showInPortal !== false})` : ''}"
+                            title="${isAdmin ? 'Klik untuk mengubah visibilitas di portal siswa' : ''}"
+                            ${!isAdmin ? 'disabled style="cursor: default;"' : ''}
+                            style="padding: 0.25rem 0.65rem; font-size: 0.76rem; border-radius: var(--radius-full); font-weight: 700; display: inline-flex; align-items: center; gap: 4px;">
+                        <i class="ph ${e.showInPortal !== false ? 'ph-eye' : 'ph-eye-slash'}"></i>
+                        <span>${e.showInPortal !== false ? 'Tampil di Portal' : 'Disembunyikan'}</span>
+                    </button>
                 </div>
 
                 <div class="action-group-primary">
@@ -110,12 +143,13 @@ Router.addRoute('/dashboard', async () => {
         examListHtml = `
             <!-- Desktop Table View (>= 768px) -->
             <div class="desktop-only table-responsive">
-                <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 580px;">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; min-width: 650px;">
                     <thead>
                         <tr style="border-bottom: 1px solid var(--border-color); background: var(--bg-base);">
                             <th class="py-3 px-4 text-sm font-semibold text-secondary">Judul</th>
                             <th class="py-3 px-4 text-sm font-semibold text-secondary">Mata Pelajaran</th>
                             <th class="py-3 px-4 text-sm font-semibold text-secondary">Status</th>
+                            <th class="py-3 px-4 text-sm font-semibold text-secondary text-center">Portal Siswa</th>
                             <th class="py-3 px-4 text-sm font-semibold text-secondary text-center">Peserta</th>
                             <th class="py-3 px-4 text-sm font-semibold text-secondary text-center">Aksi</th>
                         </tr>
@@ -140,7 +174,7 @@ Router.addRoute('/dashboard', async () => {
                 <div class="container flex justify-between items-center" style="gap: 0.5rem;">
                     <div class="brand" style="font-size: 1.05rem;">
                         <i class="ph ph-graduation-cap ph-fill text-primary"></i>
-                        <span>Dashboard Guru</span>
+                        <span>${isAdmin ? 'Dashboard Admin CBT' : 'Dashboard Guru'}</span>
                     </div>
                     <div class="flex items-center gap-2 sm:gap-3">
                         <button class="btn btn-outline-primary btn-sm flex items-center gap-1.5" onclick="copyStudentPortalLink()" title="Bagikan Link Portal Siswa (Universal)">
@@ -148,7 +182,7 @@ Router.addRoute('/dashboard', async () => {
                         </button>
                         <div class="teacher-profile-chip" title="${escapeHtml(AppState.user ? (AppState.user.teacherName || AppState.user.username || 'Guru') : 'Guru')}">
                             <i class="ph ph-user-circle"></i>
-                            <span>${escapeHtml(AppState.user ? (AppState.user.teacherName || AppState.user.username || 'Guru') : 'Guru')}</span>
+                            <span>${isAdmin ? '<span style="background: var(--primary-100); color: var(--primary-700); font-size: 0.68rem; font-weight: 800; padding: 1px 5px; border-radius: 4px; margin-right: 3px;">ADMIN</span>' : ''}${escapeHtml(AppState.user ? (AppState.user.teacherName || AppState.user.username || 'Guru') : 'Guru')}</span>
                         </div>
                         <button class="btn btn-secondary btn-sm" onclick="handleLogout()" title="Keluar">
                             <i class="ph ph-sign-out"></i> <span class="hidden sm-inline">Keluar</span>
@@ -158,6 +192,22 @@ Router.addRoute('/dashboard', async () => {
             </nav>
 
             <div class="container mt-6">
+                ${isAdmin ? `
+                    <div class="card mb-4 p-3.5 flex items-center justify-between" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-md); font-size: 0.85rem; color: #166534; flex-wrap: wrap; gap: 0.75rem;">
+                        <div class="flex items-center gap-2.5">
+                            <i class="ph ph-shield-check text-success" style="font-size: 1.6rem; flex-shrink: 0;"></i>
+                            <div>
+                                <div class="font-bold">Mode Pengelolaan Administrator</div>
+                                <div class="text-xs text-secondary mt-0.5">
+                                    Sebagai Administrator, Anda dapat mengelola seluruh ujian dan menentukan ujian mana saja yang ditampilkan di <strong>Portal Siswa</strong> via tombol di kolom <em>Portal Siswa</em>.
+                                </div>
+                            </div>
+                        </div>
+                        <button class="btn btn-outline-primary btn-sm flex items-center gap-1.5" onclick="copyStudentPortalLink()" style="background: #ffffff;">
+                            <i class="ph ph-share-network"></i> Link Portal Siswa
+                        </button>
+                    </div>
+                ` : ''}
                 <!-- Stats -->
                 <div class="grid grid-cols-3 gap-4 mb-6">
                     <div class="card flex items-center gap-4">
@@ -308,3 +358,32 @@ window.handleDeleteExam = async function(examId) {
         UI.showToast(res.message || 'Gagal menghapus ujian', 'error');
     }
 };
+
+window.handleTogglePortal = async function(examId, currentStatus) {
+    if (!AppState.user || AppState.user.role !== 'ADMIN') {
+        UI.showToast('Hanya akun Admin yang berwenang mengubah visibilitas ujian di portal.', 'warning');
+        return;
+    }
+    const btn1 = document.getElementById('portal-btn-' + examId);
+    const btn2 = document.getElementById('mobile-portal-btn-' + examId);
+    if (btn1) { btn1.disabled = true; btn1.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Loading...'; }
+    if (btn2) { btn2.disabled = true; btn2.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Loading...'; }
+
+    try {
+        const newStatus = !currentStatus;
+        const res = await api.toggleExamPortalVisibility(AppState.user.sessionId, examId, newStatus);
+        if (res.success) {
+            UI.showToast(res.message || (newStatus ? 'Ujian kini ditampilkan di Portal Siswa.' : 'Ujian disembunyikan dari Portal Siswa.'), 'success');
+            Router.handleRoute();
+        } else {
+            UI.showToast(res.message || 'Gagal mengubah visibilitas.', 'error');
+            if (btn1) btn1.disabled = false;
+            if (btn2) btn2.disabled = false;
+        }
+    } catch (err) {
+        UI.showToast('Terjadi kesalahan koneksi.', 'error');
+        if (btn1) btn1.disabled = false;
+        if (btn2) btn2.disabled = false;
+    }
+};
+

@@ -1,6 +1,6 @@
 Router.addRoute('/exam-editor', async (params) => {
     // Check auth
-    if (!AppState.user || AppState.user.role !== 'TEACHER') {
+    if (!AppState.user || (AppState.user.role !== 'TEACHER' && AppState.user.role !== 'ADMIN')) {
         setTimeout(() => Router.navigate('/login'), 0);
         return `<div class="loading-full">Mengalihkan...</div>`;
     }
