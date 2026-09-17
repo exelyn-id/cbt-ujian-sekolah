@@ -35,10 +35,7 @@ Router.addRoute('/student/landing', async (params) => {
     const exam = res.data;
     AppState.update({ currentExam: exam, mode: 'student' });
 
-    const classList = [
-        "XII.1", "XII.2", "XII.3", "XII.4", "XII.5", "XII.6",
-        "XII.7", "XII.8", "XII.9", "XII.10", "XII.11"
-    ];
+    const classList = ["X", "XI", "XII"];
 
     return `
         <div class="view flex items-center justify-center" style="background-color: var(--bg-base); min-height: 100vh;">
