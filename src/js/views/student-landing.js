@@ -35,7 +35,12 @@ Router.addRoute('/student/landing', async (params) => {
     const exam = res.data;
     AppState.update({ currentExam: exam, mode: 'student' });
 
-    const classList = ["X", "XI", "XII"];
+    const classList = [];
+    ['X', 'XI', 'XII'].forEach(level => {
+        for (let i = 1; i <= 11; i++) {
+            classList.push(`${level}.${i}`);
+        }
+    });
 
     return `
         <div class="view flex items-center justify-center" style="background-color: var(--bg-base); min-height: 100vh;">
@@ -83,9 +88,21 @@ Router.addRoute('/student/landing', async (params) => {
                         <label class="input-label" for="classNameInput">Kelas</label>
                         <select id="classNameInput" class="input-control" required style="background-color: #ffffff; cursor: pointer;">
                             <option value="" disabled ${!classList.includes(exam.className) ? 'selected' : ''}>-- Pilih Kelas --</option>
-                            ${classList.map(cls => `
-                                <option value="${cls}" ${exam.className === cls ? 'selected' : ''}>${cls}</option>
-                            `).join('')}
+                            <optgroup label="Kelas X">
+                                ${classList.filter(c => c.startsWith('X.')).map(cls => `
+                                    <option value="${cls}" ${exam.className === cls ? 'selected' : ''}>${cls}</option>
+                                `).join('')}
+                            </optgroup>
+                            <optgroup label="Kelas XI">
+                                ${classList.filter(c => c.startsWith('XI.')).map(cls => `
+                                    <option value="${cls}" ${exam.className === cls ? 'selected' : ''}>${cls}</option>
+                                `).join('')}
+                            </optgroup>
+                            <optgroup label="Kelas XII">
+                                ${classList.filter(c => c.startsWith('XII.')).map(cls => `
+                                    <option value="${cls}" ${exam.className === cls ? 'selected' : ''}>${cls}</option>
+                                `).join('')}
+                            </optgroup>
                         </select>
                     </div>
 
