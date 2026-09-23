@@ -49,6 +49,7 @@ Router.addRoute('/question-builder', async (params) => {
             ];
             newQ.correctAnswer = { '1': 'TRUE', '2': 'TRUE', '3': 'FALSE' };
             newQ.scoringMethod = 'EXACT';
+            newQ.tfType = 'BENAR_SALAH';
         }
         
         questions.push(newQ);
@@ -143,6 +144,12 @@ Router.addRoute('/question-builder', async (params) => {
             q.correctAnswer = {};
         }
         q.correctAnswer[sId] = keyVal;
+    };
+
+    window.setTfFormat = function(qIndex, newFormat) {
+        if (!questions[qIndex]) return;
+        questions[qIndex].tfType = newFormat;
+        renderQuestionsList();
     };
 
     window.updateQuestionField = function(index, field, value) {
@@ -371,7 +378,7 @@ Router.addRoute('/question-builder', async (params) => {
                     `).join('');
                 } else if (q.type === 'TRUE_FALSE') {
                     // Normalize options if legacy single TRUE/FALSE
-                    if (!Array.isArray(q.options) || q.options.length === 0 || (q.options.length === 2 && (q.options[0].id === 'TRUE' || q.options[0].text === 'Benar'))) {
+                    if (!Array.isArray(q.options) || q.options.length === 0 || (q.options.length === 2 && (q.options[0].id === 'TRUE' || q.options[0].text === 'Benar' || q.options[0].text === 'Sesuai' || q.options[0].text === 'Tepat'))) {
                         q.options = [
                             { id: '1', text: '' },
                             { id: '2', text: '' },
@@ -381,13 +388,24 @@ Router.addRoute('/question-builder', async (params) => {
                     if (typeof q.correctAnswer !== 'object' || !q.correctAnswer || Array.isArray(q.correctAnswer)) {
                         q.correctAnswer = { '1': 'TRUE', '2': 'TRUE', '3': 'FALSE' };
                     }
+                    const tfType = q.tfType || 'BENAR_SALAH';
+                    const tfLabels = getTfLabels(tfType);
 
                     optionsHtml = `
                         <div class="tf-builder-table-wrap mb-3" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: #ffffff;">
-                            <div style="background: #f0f9ff; padding: 0.6rem 0.85rem; border-bottom: 1px solid #bae6fd; display: flex; justify-content: space-between; align-items: center;">
-                                <span class="font-bold text-xs" style="color: #0369a1; text-transform: uppercase; letter-spacing: 0.04em;">
-                                    <i class="ph ph-table"></i> Daftar Pernyataan Benar / Salah (Maksimal 5)
-                                </span>
+                            <!-- Header Bar with Format Selector -->
+                            <div style="background: #f0f9ff; padding: 0.65rem 0.85rem; border-bottom: 1px solid #bae6fd; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                <div class="flex items-center gap-2">
+                                    <span class="font-bold text-xs" style="color: #0369a1; text-transform: uppercase; letter-spacing: 0.04em;">
+                                        <i class="ph ph-table"></i> Format Pilihan:
+                                    </span>
+                                    <select class="input-control" style="padding: 0.25rem 0.6rem; font-size: 0.8rem; font-weight: 600; width: auto; background: #ffffff; border-color: #7dd3fc; color: #0369a1;" 
+                                            onchange="setTfFormat(${qIndex}, this.value)">
+                                        <option value="BENAR_SALAH" ${tfType === 'BENAR_SALAH' ? 'selected' : ''}>Benar, Salah</option>
+                                        <option value="SESUAI_TIDAK" ${tfType === 'SESUAI_TIDAK' ? 'selected' : ''}>Sesuai, Tidak Sesuai</option>
+                                        <option value="TEPAT_TIDAK" ${tfType === 'TEPAT_TIDAK' ? 'selected' : ''}>Tepat, Tidak Tepat</option>
+                                    </select>
+                                </div>
                                 <span class="text-xs text-muted font-medium">${q.options.length} / 5 Pernyataan</span>
                             </div>
                             <div style="overflow-x: auto;">
@@ -396,7 +414,7 @@ Router.addRoute('/question-builder', async (params) => {
                                         <tr style="background: var(--bg-base); border-bottom: 1px solid var(--border-color); color: var(--text-secondary);">
                                             <th style="padding: 8px 10px; width: 40px; text-align: center;">No</th>
                                             <th style="padding: 8px 10px; text-align: left;">Teks Pernyataan</th>
-                                            <th style="padding: 8px 10px; width: 160px; text-align: center;">Kunci Jawaban</th>
+                                            <th style="padding: 8px 10px; width: 220px; text-align: center;">Kunci (${tfLabels.positive} / ${tfLabels.negative})</th>
                                             <th style="padding: 8px 10px; width: 50px; text-align: center;">Aksi</th>
                                         </tr>
                                     </thead>
@@ -418,11 +436,11 @@ Router.addRoute('/question-builder', async (params) => {
                                                         <div class="flex items-center justify-center gap-3">
                                                             <label class="flex items-center gap-1" style="cursor: pointer; font-size: 0.82rem; font-weight: 600; color: #16a34a;">
                                                                 <input type="radio" name="tf_key_${q.id}_${opt.id}" value="TRUE" ${currentKey === 'TRUE' ? 'checked' : ''} onchange="setStatementKey(${qIndex}, '${opt.id}', 'TRUE')">
-                                                                Benar
+                                                                ${tfLabels.positive}
                                                             </label>
                                                             <label class="flex items-center gap-1" style="cursor: pointer; font-size: 0.82rem; font-weight: 600; color: #dc2626;">
                                                                 <input type="radio" name="tf_key_${q.id}_${opt.id}" value="FALSE" ${currentKey === 'FALSE' ? 'checked' : ''} onchange="setStatementKey(${qIndex}, '${opt.id}', 'FALSE')">
-                                                                Salah
+                                                                ${tfLabels.negative}
                                                             </label>
                                                         </div>
                                                     </td>
@@ -467,7 +485,7 @@ Router.addRoute('/question-builder', async (params) => {
                         <div class="flex justify-between items-start mb-4">
                             <div class="flex items-center gap-2">
                                 <span class="badge badge-active">Soal #${qIndex + 1}</span>
-                                <span class="text-xs text-muted font-mono bg-base" style="padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">${q.type}</span>
+                                <span class="text-xs text-muted font-mono bg-base" style="padding: 2px 6px; border-radius: 4px; border: 1px solid var(--border-color);">${q.type === 'TRUE_FALSE' ? getTfLabels(q.tfType).name : q.type}</span>
                             </div>
                             <button class="btn btn-icon btn-danger btn-sm" onclick="deleteQuestion('${q.id}')" title="Hapus Soal">
                                 <i class="ph ph-trash"></i>
@@ -605,8 +623,10 @@ Router.addRoute('/question-builder', async (params) => {
             const sampleData = [
                 headers,
                 [1, "MCQ", "Ibu kota negara Indonesia saat ini adalah...", "", "Jakarta", "Bandung", "Surabaya", "Nusantara", "Medan", "A", 10, "Ibu kota Indonesia saat ini adalah DKI Jakarta."],
-                [2, "TRUE_FALSE", "Seorang murid memperkirakan banyaknya penonton suatu video di media sosial. Tentukan Benar atau Salah untuk setiap pernyataan berikut!", "", "Video tersebut hanya ditonton oleh 3.000 penonton setelah tepat 24 jam diunggah.", "Banyaknya penonton video meningkat dua kali lipat dari hari sebelumnya untuk beberapa hari setelah diunggah.", "Model banyaknya penonton ini tidak tepat untuk waktu yang cukup besar.", "", "", "B,B,S", 10, "Pernyataan 1 Benar, Pernyataan 2 Benar, Pernyataan 3 Salah."],
-                [3, "MCQ_COMPLEX", "Manakah dari teknologi berikut yang merupakan bahasa web frontend? (Pilih semua yang benar)", "", "HTML", "CSS", "JavaScript", "Python", "C++", "A,B,C", 15, "HTML, CSS, dan JavaScript adalah pilar teknologi web browser frontend."]
+                [2, "BENAR_SALAH", "Seorang murid memperkirakan banyaknya penonton suatu video di media sosial. Tentukan Benar atau Salah untuk setiap pernyataan berikut!", "", "Video tersebut hanya ditonton oleh 3.000 penonton setelah tepat 24 jam diunggah.", "Banyaknya penonton video meningkat dua kali lipat dari hari sebelumnya untuk beberapa hari setelah diunggah.", "Model banyaknya penonton ini tidak tepat untuk waktu yang cukup besar.", "", "", "B,B,S", 10, "Pernyataan 1 Benar, Pernyataan 2 Benar, Pernyataan 3 Salah."],
+                [3, "SESUAI_TIDAK_SESUAI", "Bacalah ringkasan materi berikut. Tentukan apakah pernyataan berikut Sesuai atau Tidak Sesuai dengan isi bacaan!", "", "Informasi pada alinea pertama memuat data statistik tahun 2024.", "Penulis menyimpulkan bahwa teknologi AI berdampak negatif bagi seluruh sektor.", "Pemerintah telah menyiapkan regulasi keamanan digital terbaru.", "", "", "S,TS,S", 10, "Pernyataan 1 Sesuai, Pernyataan 2 Tidak Sesuai, Pernyataan 3 Sesuai."],
+                [4, "TEPAT_TIDAK_TEPAT", "Perhatikan langkah-langkah metode ilmiah berikut. Tentukan Tepat atau Tidak Tepat untuk setiap tahapan!", "", "Hipotesis dirumuskan sebelum melakukan pengamatan awal.", "Eksperimen dilakukan untuk menguji kebenaran hipotesis.", "Kesimpulan ditarik berdasarkan data hasil percobaan.", "", "", "TT,T,T", 10, "Pernyataan 1 Tidak Tepat, Pernyataan 2 Tepat, Pernyataan 3 Tepat."],
+                [5, "MCQ_COMPLEX", "Manakah dari teknologi berikut yang merupakan bahasa web frontend? (Pilih semua yang benar)", "", "HTML", "CSS", "JavaScript", "Python", "C++", "A,B,C", 15, "HTML, CSS, dan JavaScript adalah pilar teknologi web browser frontend."]
             ];
             const ws = XLSX.utils.aoa_to_sheet(sampleData);
             const wb = XLSX.utils.book_new();
@@ -641,11 +661,22 @@ Router.addRoute('/question-builder', async (params) => {
                 <div class="flex items-center justify-between p-3 mb-3" style="background: var(--bg-base); border-radius: var(--radius-md); border: 1px solid var(--border-color); flex-wrap: wrap; gap: 0.5rem;">
                     <div>
                         <div class="font-semibold text-xs text-primary">Belum punya format Excel?</div>
-                        <div class="text-xs text-muted">Unduh template standar lengkap dengan 3 contoh pengisian</div>
+                        <div class="text-xs text-muted">Unduh template standar lengkap dengan contoh PG, Benar/Salah, Sesuai/Tidak, Tepat/Tidak, & PG Kompleks</div>
                     </div>
                     <button class="btn btn-outline-primary btn-sm" onclick="downloadTemplateExcel()">
                         <i class="ph ph-download-simple"></i> Unduh Template Excel
                     </button>
+                </div>
+
+                <div class="p-2.5 mb-3" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-sm); font-size: 0.78rem; color: #166534;">
+                    <strong><i class="ph ph-info"></i> Format Tipe Soal & Kunci Jawaban Excel:</strong>
+                    <ul style="margin: 0.25rem 0 0 1.2rem; padding: 0; line-height: 1.45;">
+                        <li><code>MCQ</code>: Pilihan Ganda (Kunci: A, B, C, D, atau E)</li>
+                        <li><code>BENAR_SALAH</code> / <code>TRUE_FALSE</code>: Benar / Salah (Kunci: B,S,B atau Benar,Salah,Benar)</li>
+                        <li><code>SESUAI_TIDAK_SESUAI</code> / <code>SESUAI</code>: Sesuai / Tidak Sesuai (Kunci: S,TS,S atau Sesuai,Tidak Sesuai,Sesuai)</li>
+                        <li><code>TEPAT_TIDAK_TEPAT</code> / <code>TEPAT</code>: Tepat / Tidak Tepat (Kunci: T,TT,T atau Tepat,Tidak Tepat,Tepat)</li>
+                        <li><code>MCQ_COMPLEX</code>: Pilihan Ganda Kompleks (Kunci: A,B,C)</li>
+                    </ul>
                 </div>
 
                 <div class="upload-dropzone" onclick="document.getElementById('excelFileInput').click()">
@@ -796,10 +827,28 @@ Router.addRoute('/question-builder', async (params) => {
 
                     const typeRaw = getVal(colType, 1).toUpperCase();
                     let type = 'MCQ';
-                    if (typeRaw.includes('TRUE') || typeRaw.includes('SALAH') || typeRaw.includes('BENAR')) {
+                    let tfType = 'BENAR_SALAH';
+                    if (typeRaw.includes('SESUAI')) {
                         type = 'TRUE_FALSE';
+                        tfType = 'SESUAI_TIDAK';
+                    } else if (typeRaw.includes('TEPAT')) {
+                        type = 'TRUE_FALSE';
+                        tfType = 'TEPAT_TIDAK';
+                    } else if (typeRaw.includes('TRUE') || typeRaw.includes('SALAH') || typeRaw.includes('BENAR')) {
+                        type = 'TRUE_FALSE';
+                        tfType = 'BENAR_SALAH';
                     } else if (typeRaw.includes('KOMPLEKS') || typeRaw.includes('COMPLEX')) {
                         type = 'MCQ_COMPLEX';
+                    }
+
+                    // Auto-detect format from question text if TRUE_FALSE without explicit keyword in type
+                    if (type === 'TRUE_FALSE' && tfType === 'BENAR_SALAH') {
+                        const qLower = questionText.toLowerCase();
+                        if (qLower.includes('tidak sesuai') || qLower.includes('sesuai atau tidak') || qLower.includes('sesuai/tidak')) {
+                            tfType = 'SESUAI_TIDAK';
+                        } else if (qLower.includes('tidak tepat') || qLower.includes('tepat atau tidak') || qLower.includes('tepat/tidak')) {
+                            tfType = 'TEPAT_TIDAK';
+                        }
                     }
 
                     // Handle options offset based on whether image column was present
@@ -820,8 +869,10 @@ Router.addRoute('/question-builder', async (params) => {
                         const rawOptions = [optA, optB, optC, optD, optE].filter(o => o && String(o).trim());
                         let statements = [];
 
-                        // Check if legacy Excel where optA='Benar' & optB='Salah' & no optC
-                        if (rawOptions.length === 2 && rawOptions[0].trim().toLowerCase() === 'benar' && rawOptions[1].trim().toLowerCase() === 'salah') {
+                        // Check if legacy Excel where optA='Benar' & optB='Salah'
+                        if (rawOptions.length === 2 && 
+                            (rawOptions[0].trim().toLowerCase() === 'benar' || rawOptions[0].trim().toLowerCase() === 'sesuai' || rawOptions[0].trim().toLowerCase() === 'tepat') && 
+                            (rawOptions[1].trim().toLowerCase() === 'salah' || rawOptions[1].trim().toLowerCase() === 'tidak sesuai' || rawOptions[1].trim().toLowerCase() === 'tidak tepat')) {
                             statements.push({ id: '1', text: questionText });
                         } else if (rawOptions.length > 0) {
                             rawOptions.slice(0, 5).forEach((st, sIdx) => {
@@ -832,16 +883,38 @@ Router.addRoute('/question-builder', async (params) => {
                         }
                         options = statements;
 
-                        // Parse keys e.g. "B,B,S" or "Benar,Benar,Salah" or "TRUE,TRUE,FALSE" or "B,S,B"
+                        // Parse keys e.g. "B,B,S" or "S,S,TS" or "T,T,TT" or full words
                         const keyTokens = String(rawKey || '').split(/[,; ]+/).filter(Boolean);
                         const keyMap = {};
+                        const isSesuaiMode = tfType === 'SESUAI_TIDAK';
+                        const isTepatMode = tfType === 'TEPAT_TIDAK';
+
                         statements.forEach((st, sIdx) => {
-                            const tok = (keyTokens[sIdx] || keyTokens[0] || 'B').trim().toUpperCase();
-                            if (tok === 'S' || tok === 'SALAH' || tok === 'FALSE') {
-                                keyMap[st.id] = 'FALSE';
+                            const tok = (keyTokens[sIdx] || keyTokens[0] || '').trim().toUpperCase();
+                            let isTrue = true;
+                            if (isSesuaiMode) {
+                                // Sesuai (TRUE), Tidak Sesuai (FALSE)
+                                if (tok === 'TS' || tok.includes('TIDAK') || tok === 'FALSE' || tok === 'SALAH' || tok === '0') {
+                                    isTrue = false;
+                                } else {
+                                    isTrue = true;
+                                }
+                            } else if (isTepatMode) {
+                                // Tepat (TRUE), Tidak Tepat (FALSE)
+                                if (tok === 'TT' || tok.includes('TIDAK') || tok === 'FALSE' || tok === 'SALAH' || tok === '0') {
+                                    isTrue = false;
+                                } else {
+                                    isTrue = true;
+                                }
                             } else {
-                                keyMap[st.id] = 'TRUE';
+                                // Benar (TRUE), Salah (FALSE)
+                                if (tok === 'S' || tok === 'SALAH' || tok === 'FALSE' || tok === '0') {
+                                    isTrue = false;
+                                } else {
+                                    isTrue = true;
+                                }
                             }
+                            keyMap[st.id] = isTrue ? 'TRUE' : 'FALSE';
                         });
                         correctAnswer = keyMap;
                     } else if (type === 'MCQ_COMPLEX') {
@@ -863,6 +936,7 @@ Router.addRoute('/question-builder', async (params) => {
                     parsed.push({
                         id: 'Q_' + Math.floor(Math.random() * 90000 + 10000),
                         type: type,
+                        tfType: tfType,
                         text: questionText,
                         imageUrl: formatDirectImageUrl(rawImg),
                         score: score,
@@ -893,7 +967,7 @@ Router.addRoute('/question-builder', async (params) => {
                             ${parsed.map((pq, pi) => `
                                 <div class="py-1.5 px-2 flex justify-between items-center" style="border-bottom: 1px solid var(--border-color); gap: 0.5rem;">
                                     <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0;">
-                                        <strong>#${pi+1}</strong> [${pq.type}] ${escapeHtml(pq.text)}
+                                        <strong>#${pi+1}</strong> [${pq.type === 'TRUE_FALSE' ? getTfLabels(pq.tfType).name : pq.type}] ${escapeHtml(pq.text)}
                                     </span>
                                     <span class="badge badge-active text-xs" style="flex-shrink: 0;">${pq.score} Poin</span>
                                 </div>

@@ -30,9 +30,10 @@ Router.addRoute('/student/exam', async () => {
                 `;
             }).join('');
         } else if (q.type === 'TRUE_FALSE') {
+            const tfLabels = getTfLabels(q.tfType);
             let statements = q.options || [];
             // Backward compatibility fallback for old single TRUE_FALSE
-            if (statements.length === 2 && (statements[0].id === 'TRUE' || statements[0].text === 'Benar')) {
+            if (statements.length === 2 && (statements[0].id === 'TRUE' || statements[0].text === 'Benar' || statements[0].text === 'Sesuai' || statements[0].text === 'Tepat')) {
                 statements = [{ id: '1', text: q.text }];
             }
             const currentAns = (answers && typeof answers === 'object' && !Array.isArray(answers)) ? answers : {};
@@ -43,30 +44,30 @@ Router.addRoute('/student/exam', async () => {
                         <thead>
                             <tr style="background: #e0f2fe; color: #0369a1; border-bottom: 2px solid #bae6fd;">
                                 <th style="padding: 12px 16px; font-weight: 700; width: 66%;">Pernyataan</th>
-                                <th style="padding: 12px 14px; text-align: center; width: 17%; font-weight: 700;">Benar</th>
-                                <th style="padding: 12px 14px; text-align: center; width: 17%; font-weight: 700;">Salah</th>
+                                <th style="padding: 12px 14px; text-align: center; width: 17%; font-weight: 700;">${tfLabels.positive}</th>
+                                <th style="padding: 12px 14px; text-align: center; width: 17%; font-weight: 700;">${tfLabels.negative}</th>
                             </tr>
                         </thead>
                         <tbody>
                             ${statements.map((opt, sIdx) => {
                                 const val = currentAns[opt.id] || '';
-                                const isBenar = (val === 'TRUE' || val === 'BENAR' || val === 'B');
-                                const isSalah = (val === 'FALSE' || val === 'SALAH' || val === 'S');
+                                const isPos = (val === 'TRUE' || val === 'BENAR' || val === 'B' || val === 'SESUAI' || val === 'TEPAT' || val === '1');
+                                const isNeg = (val === 'FALSE' || val === 'SALAH' || val === 'S' || val === 'TS' || val === 'TT' || val === 'TIDAK SESUAI' || val === 'TIDAK TEPAT' || val === '0');
                                 return `
                                     <tr style="border-bottom: 1px solid var(--border-color); background: ${sIdx % 2 === 0 ? '#ffffff' : 'var(--bg-base)'};">
                                         <td style="padding: 12px 16px; vertical-align: middle; line-height: 1.5; color: var(--text-primary); font-weight: 500;">
                                             ${escapeHtml(opt.text)}
                                         </td>
                                         <td style="padding: 12px 14px; text-align: center; vertical-align: middle;">
-                                            <label style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; cursor: pointer; margin: 0;">
-                                                <input type="radio" name="tf_${q.id}_${opt.id}" value="TRUE" ${isBenar ? 'checked' : ''} 
+                                            <label style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; cursor: pointer; margin: 0;" title="${tfLabels.positive}">
+                                                <input type="radio" name="tf_${q.id}_${opt.id}" value="TRUE" ${isPos ? 'checked' : ''} 
                                                        onchange="handleTrueFalseAnswer('${q.id}', '${opt.id}', 'TRUE')" 
                                                        style="width: 1.35rem; height: 1.35rem; cursor: pointer; accent-color: var(--primary-600);">
                                             </label>
                                         </td>
                                         <td style="padding: 12px 14px; text-align: center; vertical-align: middle;">
-                                            <label style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; cursor: pointer; margin: 0;">
-                                                <input type="radio" name="tf_${q.id}_${opt.id}" value="FALSE" ${isSalah ? 'checked' : ''} 
+                                            <label style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; cursor: pointer; margin: 0;" title="${tfLabels.negative}">
+                                                <input type="radio" name="tf_${q.id}_${opt.id}" value="FALSE" ${isNeg ? 'checked' : ''} 
                                                        onchange="handleTrueFalseAnswer('${q.id}', '${opt.id}', 'FALSE')" 
                                                        style="width: 1.35rem; height: 1.35rem; cursor: pointer; accent-color: var(--primary-600);">
                                             </label>
@@ -107,7 +108,7 @@ Router.addRoute('/student/exam', async () => {
             </div>
         `;
 
-        const typeBadge = q.type === 'MCQ' ? 'Pilihan Ganda' : (q.type === 'TRUE_FALSE' ? 'Benar / Salah' : 'Ganda Kompleks');
+        const typeBadge = q.type === 'MCQ' ? 'Pilihan Ganda' : (q.type === 'TRUE_FALSE' ? getTfLabels(q.tfType).name : 'Ganda Kompleks');
         const qImg = q.imageUrl || q.questionImageUrl || '';
         const formattedQImg = formatDirectImageUrl(qImg);
 

@@ -116,7 +116,7 @@ function ensureDatabaseSchema() {
   schema[CONFIG.SHEETS.QUESTIONS] = [
     "ID Soal", "ID Ujian", "Nomor Urut", "Tipe Soal", "Teks Pertanyaan", "URL Gambar Soal",
     "Bobot Nilai", "Metode Penilaian", "Kunci Jawaban", "JSON Opsi", "Dibuat Pada", "Diperbarui Pada", "Status",
-    "Teks Bawah Gambar"
+    "Teks Bawah Gambar", "Tipe Pilihan Benar Salah"
   ];
 
   // Sheet: Attempts (Riwayat Pengerjaan Siswa)
@@ -896,10 +896,12 @@ function getQuestions(sessionId, examId) {
         }
 
         var rawImg = q.imageUrl || q.questionImageUrl || q["URL Gambar Soal"] || q["URL Gambar"] || q["Gambar"] || "";
+        var tfType = q.tfType || q["Tipe Pilihan Benar Salah"] || q["Format Benar Salah"] || "BENAR_SALAH";
         examQuestions.push({
           id: q.questionId,
           orderNo: Number(q.orderNo),
           type: q.type,
+          tfType: tfType,
           text: q.questionText,
           bottomText: q.bottomText || q["Teks Bawah Gambar"] || q["Teks Lanjutan"] || "",
           imageUrl: _normalizeDriveUrl(rawImg),
@@ -990,7 +992,8 @@ function saveQuestions(sessionId, examId, questionsList) {
         now,
         now,
         "ACTIVE",
-        q.bottomText || ""
+        q.bottomText || "",
+        q.tfType || "BENAR_SALAH"
       ]);
     }
 
@@ -1233,11 +1236,13 @@ function startExamAttempt(examId, participantData) {
       }
 
       var rawImg = rawQ.imageUrl || rawQ.questionImageUrl || rawQ["URL Gambar Soal"] || rawQ["URL Gambar"] || rawQ["Gambar"] || "";
+      var tfType = rawQ.tfType || rawQ["Tipe Pilihan Benar Salah"] || rawQ["Format Benar Salah"] || "BENAR_SALAH";
 
       // Security: DO NOT include correctAnswer, score, or scoringMethod
       sanitizedQuestions.push({
         id: rawQ.questionId,
         type: rawQ.type,
+        tfType: tfType,
         text: rawQ.questionText,
         bottomText: rawQ.bottomText || rawQ["Teks Bawah Gambar"] || rawQ["Teks Lanjutan"] || "",
         imageUrl: _normalizeDriveUrl(rawImg),
@@ -1479,10 +1484,10 @@ function submitExamAttempt(attemptId, finalAnswersMap) {
                 var sId = String(qOptions[oi].id);
                 var sVal = sMap ? String(sMap[sId] || "").trim().toUpperCase() : "";
                 var cVal = cMap ? String(cMap[sId] || "").trim().toUpperCase() : "";
-                if (sVal === "BENAR" || sVal === "B") sVal = "TRUE";
-                if (sVal === "SALAH" || sVal === "S") sVal = "FALSE";
-                if (cVal === "BENAR" || cVal === "B") cVal = "TRUE";
-                if (cVal === "SALAH" || cVal === "S") cVal = "FALSE";
+                if (sVal === "BENAR" || sVal === "B" || sVal === "SESUAI" || sVal === "TEPAT" || sVal === "1" || sVal === "TRUE") sVal = "TRUE";
+                if (sVal === "SALAH" || sVal === "S" || sVal === "TIDAK SESUAI" || sVal === "TS" || sVal === "TIDAK TEPAT" || sVal === "TT" || sVal === "0" || sVal === "FALSE") sVal = "FALSE";
+                if (cVal === "BENAR" || cVal === "B" || cVal === "SESUAI" || cVal === "TEPAT" || cVal === "1" || cVal === "TRUE") cVal = "TRUE";
+                if (cVal === "SALAH" || cVal === "S" || cVal === "TIDAK SESUAI" || cVal === "TS" || cVal === "TIDAK TEPAT" || cVal === "TT" || cVal === "0" || cVal === "FALSE") cVal = "FALSE";
                 if (sVal && cVal && sVal === cVal) {
                   correctCount++;
                 }
@@ -1491,10 +1496,10 @@ function submitExamAttempt(attemptId, finalAnswersMap) {
               for (var kId in cMap) {
                 var sV = sMap ? String(sMap[kId] || "").trim().toUpperCase() : "";
                 var cV = String(cMap[kId] || "").trim().toUpperCase();
-                if (sV === "BENAR" || sV === "B") sV = "TRUE";
-                if (sV === "SALAH" || sV === "S") sV = "FALSE";
-                if (cV === "BENAR" || cV === "B") cV = "TRUE";
-                if (cV === "SALAH" || cV === "S") cV = "FALSE";
+                if (sV === "BENAR" || sV === "B" || sV === "SESUAI" || sV === "TEPAT" || sV === "1" || sV === "TRUE") sV = "TRUE";
+                if (sV === "SALAH" || sV === "S" || sV === "TIDAK SESUAI" || sV === "TS" || sV === "TIDAK TEPAT" || sV === "TT" || sV === "0" || sV === "FALSE") sV = "FALSE";
+                if (cV === "BENAR" || cV === "B" || cV === "SESUAI" || cV === "TEPAT" || cV === "1" || cV === "TRUE") cV = "TRUE";
+                if (cV === "SALAH" || cV === "S" || cV === "TIDAK SESUAI" || cV === "TS" || cV === "TIDAK TEPAT" || cV === "TT" || cV === "0" || cV === "FALSE") cV = "FALSE";
                 if (sV && cV && sV === cV) {
                   correctCount++;
                 }
@@ -1518,10 +1523,10 @@ function submitExamAttempt(attemptId, finalAnswersMap) {
             // Fallback for single TRUE_FALSE
             var sAnsStr = String(studentAns).trim().toUpperCase();
             var cAnsStr = String(rawCAns).trim().toUpperCase();
-            if (sAnsStr === "SALAH" || sAnsStr === "FALSE" || sAnsStr === "S") sAnsStr = "FALSE";
-            if (sAnsStr === "BENAR" || sAnsStr === "TRUE" || sAnsStr === "B") sAnsStr = "TRUE";
-            if (cAnsStr === "SALAH" || cAnsStr === "FALSE" || cAnsStr === "S") cAnsStr = "FALSE";
-            if (cAnsStr === "BENAR" || cAnsStr === "TRUE" || cAnsStr === "B") cAnsStr = "TRUE";
+            if (sAnsStr === "SALAH" || sAnsStr === "FALSE" || sAnsStr === "S" || sAnsStr === "TS" || sAnsStr === "TT" || sAnsStr === "TIDAK SESUAI" || sAnsStr === "TIDAK TEPAT" || sAnsStr === "0") sAnsStr = "FALSE";
+            if (sAnsStr === "BENAR" || sAnsStr === "TRUE" || sAnsStr === "B" || sAnsStr === "SESUAI" || sAnsStr === "TEPAT" || sAnsStr === "1") sAnsStr = "TRUE";
+            if (cAnsStr === "SALAH" || cAnsStr === "FALSE" || cAnsStr === "S" || cAnsStr === "TS" || cAnsStr === "TT" || cAnsStr === "TIDAK SESUAI" || cAnsStr === "TIDAK TEPAT" || cAnsStr === "0") cAnsStr = "FALSE";
+            if (cAnsStr === "BENAR" || cAnsStr === "TRUE" || cAnsStr === "B" || cAnsStr === "SESUAI" || cAnsStr === "TEPAT" || cAnsStr === "1") cAnsStr = "TRUE";
             if (sAnsStr === cAnsStr && sAnsStr !== "") {
               qScore = maxScore;
               isQCorrect = true;
@@ -1908,20 +1913,20 @@ function getStudentAttemptDetail(sessionId, attemptId) {
                 var sId = String(parsedOptions[oi].id);
                 var sVal = String(sMap[sId] || "").trim().toUpperCase();
                 var cVal = String(cMap[sId] || "").trim().toUpperCase();
-                if (sVal === "BENAR" || sVal === "B") sVal = "TRUE";
-                if (sVal === "SALAH" || sVal === "S") sVal = "FALSE";
-                if (cVal === "BENAR" || cVal === "B") cVal = "TRUE";
-                if (cVal === "SALAH" || cVal === "S") cVal = "FALSE";
+                if (sVal === "BENAR" || sVal === "B" || sVal === "SESUAI" || sVal === "TEPAT" || sVal === "1" || sVal === "TRUE") sVal = "TRUE";
+                if (sVal === "SALAH" || sVal === "S" || sVal === "TIDAK SESUAI" || sVal === "TS" || sVal === "TIDAK TEPAT" || sVal === "TT" || sVal === "0" || sVal === "FALSE") sVal = "FALSE";
+                if (cVal === "BENAR" || cVal === "B" || cVal === "SESUAI" || cVal === "TEPAT" || cVal === "1" || cVal === "TRUE") cVal = "TRUE";
+                if (cVal === "SALAH" || cVal === "S" || cVal === "TIDAK SESUAI" || cVal === "TS" || cVal === "TIDAK TEPAT" || cVal === "TT" || cVal === "0" || cVal === "FALSE") cVal = "FALSE";
                 if (sVal && cVal && sVal === cVal) correctCount++;
               }
             } else {
               for (var kId in cMap) {
                 var sV = String(sMap[kId] || "").trim().toUpperCase();
                 var cV = String(cMap[kId] || "").trim().toUpperCase();
-                if (sV === "BENAR" || sV === "B") sV = "TRUE";
-                if (sV === "SALAH" || sV === "S") sV = "FALSE";
-                if (cV === "BENAR" || cV === "B") cV = "TRUE";
-                if (cV === "SALAH" || cV === "S") cV = "FALSE";
+                if (sV === "BENAR" || sV === "B" || sV === "SESUAI" || sV === "TEPAT" || sV === "1" || sV === "TRUE") sV = "TRUE";
+                if (sV === "SALAH" || sV === "S" || sV === "TIDAK SESUAI" || sV === "TS" || sV === "TIDAK TEPAT" || sV === "TT" || sV === "0" || sV === "FALSE") sV = "FALSE";
+                if (cV === "BENAR" || cV === "B" || cV === "SESUAI" || cV === "TEPAT" || cV === "1" || cV === "TRUE") cV = "TRUE";
+                if (cV === "SALAH" || cV === "S" || cV === "TIDAK SESUAI" || cV === "TS" || cV === "TIDAK TEPAT" || cV === "TT" || cV === "0" || cV === "FALSE") cV = "FALSE";
                 if (sV && cV && sV === cV) correctCount++;
               }
             }
@@ -1940,12 +1945,12 @@ function getStudentAttemptDetail(sessionId, attemptId) {
             }
           } else {
             var sStr = String(parsedStudentAnswer).trim().toUpperCase();
-            if (sStr === "SALAH" || sStr === "S" || parsedStudentAnswer === false) sStr = "FALSE";
-            if (sStr === "BENAR" || sStr === "B" || parsedStudentAnswer === true) sStr = "TRUE";
+            if (sStr === "SALAH" || sStr === "S" || sStr === "TS" || sStr === "TT" || sStr === "TIDAK SESUAI" || sStr === "TIDAK TEPAT" || sStr === "0" || parsedStudentAnswer === false) sStr = "FALSE";
+            if (sStr === "BENAR" || sStr === "B" || sStr === "SESUAI" || sStr === "TEPAT" || sStr === "1" || parsedStudentAnswer === true) sStr = "TRUE";
 
             var cStr = String(normalizedCorrect || "").trim().toUpperCase();
-            if (cStr === "SALAH" || cStr === "S" || normalizedCorrect === false) cStr = "FALSE";
-            if (cStr === "BENAR" || cStr === "B" || normalizedCorrect === true) cStr = "TRUE";
+            if (cStr === "SALAH" || cStr === "S" || cStr === "TS" || cStr === "TT" || cStr === "TIDAK SESUAI" || cStr === "TIDAK TEPAT" || cStr === "0" || normalizedCorrect === false) cStr = "FALSE";
+            if (cStr === "BENAR" || cStr === "B" || cStr === "SESUAI" || cStr === "TEPAT" || cStr === "1" || normalizedCorrect === true) cStr = "TRUE";
 
             if (sStr === cStr && sStr !== "") {
               isCorr = true;
@@ -1996,11 +2001,13 @@ function getStudentAttemptDetail(sessionId, attemptId) {
 
       var qImg = q.questionImageUrl || q.imageUrl || q["URL Gambar Soal"] || q["URL Gambar"] || q["Gambar"] || "";
       var normalizedImg = _normalizeDriveUrl(qImg);
+      var tfType = q.tfType || q["Tipe Pilihan Benar Salah"] || q["Format Benar Salah"] || "BENAR_SALAH";
 
       questionDetails.push({
         questionId: q.questionId,
         orderNo: q.orderNo || (k + 1),
         type: q.type,
+        tfType: tfType,
         questionText: q.questionText,
         bottomText: q.bottomText || q["Teks Bawah Gambar"] || q["Teks Lanjutan"] || "",
         questionImageUrl: normalizedImg,
@@ -2229,6 +2236,7 @@ var HEADER_MAP = {
   "Kunci Jawaban": ["correctAnswer"], "correctAnswer": ["correctAnswer"],
   "JSON Opsi": ["optionsJson"], "optionsJson": ["optionsJson"],
   "Teks Bawah Gambar": ["bottomText"], "bottomText": ["bottomText"], "Teks Lanjutan": ["bottomText"], "Teks Soal Bawah": ["bottomText"],
+  "Tipe Pilihan Benar Salah": ["tfType"], "Format Benar Salah": ["tfType"], "tfType": ["tfType"], "trueFalseType": ["tfType"],
 
   // Attempts
   "ID Pengerjaan": ["attemptId"], "attemptId": ["attemptId"],

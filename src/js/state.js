@@ -83,6 +83,34 @@ function escapeHtml(str) {
 }
 window.escapeHtml = escapeHtml;
 
+// Helper for True/False label variants (Benar/Salah, Sesuai/Tidak Sesuai, Tepat/Tidak Tepat)
+function getTfLabels(tfType) {
+    const type = String(tfType || '').toUpperCase();
+    if (type.includes('SESUAI')) {
+        return {
+            id: 'SESUAI_TIDAK',
+            name: 'Sesuai / Tidak Sesuai',
+            positive: 'Sesuai',
+            negative: 'Tidak Sesuai'
+        };
+    }
+    if (type.includes('TEPAT')) {
+        return {
+            id: 'TEPAT_TIDAK',
+            name: 'Tepat / Tidak Tepat',
+            positive: 'Tepat',
+            negative: 'Tidak Tepat'
+        };
+    }
+    return {
+        id: 'BENAR_SALAH',
+        name: 'Benar / Salah',
+        positive: 'Benar',
+        negative: 'Salah'
+    };
+}
+window.getTfLabels = getTfLabels;
+
 // Global helper to convert Google Drive and general image links into direct loadable URLs
 function formatDirectImageUrl(url) {
     if (!url || typeof url !== 'string') return '';

@@ -389,6 +389,7 @@ const api = {
         const sanitized = qList.map(q => ({
             id: q.id,
             type: q.type,
+            tfType: q.tfType || 'BENAR_SALAH',
             text: q.text,
             imageUrl: q.imageUrl || '',
             options: (q.options || []).map(o => ({ id: o.id, text: o.text, imageUrl: o.imageUrl || '' }))
@@ -511,6 +512,7 @@ const api = {
             questionId: q.id,
             orderNo: idx + 1,
             type: q.type,
+            tfType: q.tfType || 'BENAR_SALAH',
             questionText: q.questionText,
             questionImageUrl: q.imageUrl || '',
             score: q.score || 10,

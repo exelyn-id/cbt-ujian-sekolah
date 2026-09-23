@@ -276,15 +276,16 @@ window.showStudentDetail = async function(attemptId) {
                 if (opt) {
                     return `<span><strong>${escapeHtml(cleanId)}.</strong> ${escapeHtml(opt.text)}</span>`;
                 }
-                if (upperId === 'TRUE' || upperId === 'BENAR' || upperId === 'B') return '<span class="font-semibold text-success">TRUE. Benar</span>';
-                if (upperId === 'FALSE' || upperId === 'SALAH' || upperId === 'S') return '<span class="font-semibold text-error">FALSE. Salah</span>';
+                if (upperId === 'TRUE' || upperId === 'BENAR' || upperId === 'B' || upperId === 'SESUAI' || upperId === 'TEPAT') return '<span class="font-semibold text-success">TRUE. Benar/Sesuai/Tepat</span>';
+                if (upperId === 'FALSE' || upperId === 'SALAH' || upperId === 'S' || upperId === 'TS' || upperId === 'TT' || upperId === 'TIDAK SESUAI' || upperId === 'TIDAK TEPAT') return '<span class="font-semibold text-error">FALSE. Salah/Tidak Sesuai</span>';
                 return `<span><strong>${escapeHtml(cleanId)}</strong></span>`;
             }).join(' <span class="text-muted" style="margin: 0 4px;">•</span> ');
         };
 
         const questionsHtml = qList.map(q => {
             const isCorr = q.isCorrect;
-            const typeLabel = q.type === 'MCQ' ? 'Pilihan Ganda' : (q.type === 'TRUE_FALSE' ? 'Benar / Salah' : 'Pilihan Ganda Kompleks');
+            const tfLabels = getTfLabels(q.tfType);
+            const typeLabel = q.type === 'MCQ' ? 'Pilihan Ganda' : (q.type === 'TRUE_FALSE' ? tfLabels.name : 'Pilihan Ganda Kompleks');
 
             const studentAnsText = formatAnswerBadges(q.studentAnswer, q.options, q.type);
             const keyText = formatAnswerBadges(q.correctAnswer, q.options, q.type);
@@ -347,7 +348,7 @@ window.showStudentDetail = async function(attemptId) {
                         }
 
                         let statements = q.options || [];
-                        if (statements.length === 2 && (statements[0].id === 'TRUE' || statements[0].text === 'Benar')) {
+                        if (statements.length === 2 && (statements[0].id === 'TRUE' || statements[0].text === 'Benar' || statements[0].text === 'Sesuai' || statements[0].text === 'Tepat')) {
                             statements = [{ id: '1', text: q.questionText }];
                         }
 
@@ -367,14 +368,14 @@ window.showStudentDetail = async function(attemptId) {
                                         ${statements.map((st, sIdx) => {
                                             let sVal = (sMap && sMap[st.id] !== undefined) ? String(sMap[st.id]).trim().toUpperCase() : '';
                                             let cVal = (cMap && cMap[st.id] !== undefined) ? String(cMap[st.id]).trim().toUpperCase() : '';
-                                            if (sVal === 'BENAR' || sVal === 'B') sVal = 'TRUE';
-                                            if (sVal === 'SALAH' || sVal === 'S') sVal = 'FALSE';
-                                            if (cVal === 'BENAR' || cVal === 'B') cVal = 'TRUE';
-                                            if (cVal === 'SALAH' || cVal === 'S') cVal = 'FALSE';
+                                            if (sVal === 'BENAR' || sVal === 'B' || sVal === 'SESUAI' || sVal === 'TEPAT' || sVal === '1') sVal = 'TRUE';
+                                            if (sVal === 'SALAH' || sVal === 'S' || sVal === 'TS' || sVal === 'TT' || sVal === 'TIDAK SESUAI' || sVal === 'TIDAK TEPAT' || sVal === '0') sVal = 'FALSE';
+                                            if (cVal === 'BENAR' || cVal === 'B' || cVal === 'SESUAI' || cVal === 'TEPAT' || cVal === '1') cVal = 'TRUE';
+                                            if (cVal === 'SALAH' || cVal === 'S' || cVal === 'TS' || cVal === 'TT' || cVal === 'TIDAK SESUAI' || cVal === 'TIDAK TEPAT' || cVal === '0') cVal = 'FALSE';
 
                                             const isStmtCorrect = sVal && cVal && sVal === cVal;
-                                            const sText = sVal === 'TRUE' ? '<span class="text-success font-semibold">Benar</span>' : (sVal === 'FALSE' ? '<span class="text-error font-semibold">Salah</span>' : '<span class="text-muted italic">-</span>');
-                                            const cText = cVal === 'TRUE' ? '<span class="text-success font-semibold">Benar</span>' : (cVal === 'FALSE' ? '<span class="text-error font-semibold">Salah</span>' : '-');
+                                            const sText = sVal === 'TRUE' ? `<span class="text-success font-semibold">${tfLabels.positive}</span>` : (sVal === 'FALSE' ? `<span class="text-error font-semibold">${tfLabels.negative}</span>` : '<span class="text-muted italic">-</span>');
+                                            const cText = cVal === 'TRUE' ? `<span class="text-success font-semibold">${tfLabels.positive}</span>` : (cVal === 'FALSE' ? `<span class="text-error font-semibold">${tfLabels.negative}</span>` : '-');
 
                                             return `
                                                 <tr style="border-bottom: 1px solid var(--border-color); background: ${sIdx % 2 === 0 ? '#ffffff' : 'var(--bg-base)'};">
