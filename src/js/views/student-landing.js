@@ -135,7 +135,7 @@ window.handleStartExam = async function(event) {
     const nis = document.getElementById('nis').value.trim() || '-';
 
     btn.disabled = true;
-    btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Menyiapkan ujian...';
+    btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Menyiapkan lembar ujian...';
     
     try {
         const examId = AppState.currentExam.examId;
@@ -150,12 +150,13 @@ window.handleStartExam = async function(event) {
             UI.showToast('Ujian dimulai. Selamat mengerjakan!', 'success');
             Router.navigate('/student/exam');
         } else {
-            UI.showToast(res.message || 'Gagal memulai ujian.', 'error');
+            const errStr = res.message || 'Gagal memulai ujian.';
+            UI.showToast(errStr, 'error');
             btn.disabled = false;
             btn.innerHTML = 'Mulai Ujian Sekarang';
         }
     } catch (e) {
-        UI.showToast('Terjadi kesalahan koneksi.', 'error');
+        UI.showToast('Terjadi kesalahan koneksi. Silakan coba lagi.', 'error');
         btn.disabled = false;
         btn.innerHTML = 'Mulai Ujian Sekarang';
     }

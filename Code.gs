@@ -564,7 +564,7 @@ function getExam(sessionId, examId) {
 function saveExam(sessionId, examData) {
   var lock = LockService.getScriptLock();
   try {
-    lock.waitLock(10000);
+    lock.waitLock(20000);
     var user = _verifySession(sessionId);
     if (!user) return _response(false, null, "Sesi Anda telah berakhir.");
 
@@ -634,12 +634,16 @@ function saveExam(sessionId, examData) {
       sheet.appendRow(rowValues);
     }
 
+    // Invalidate script caches
+    _removeScriptCache("public_active_exams");
+    _removeScriptCache("exam_pub_" + examId);
+
     return _response(true, { examId: examId }, isEdit ? "Ujian berhasil diperbarui." : "Ujian baru berhasil dibuat.");
   } catch (err) {
     console.error("saveExam error:", err);
     return _response(false, null, "Gagal menyimpan ujian: " + err.message);
   } finally {
-    lock.releaseLock();
+    try { lock.releaseLock(); } catch (e) {}
   }
 }
 
@@ -662,6 +666,12 @@ function deleteExam(sessionId, examId) {
         // Set status to ARCHIVED
         sheet.getRange(r + 1, 18).setValue("ARCHIVED");
         sheet.getRange(r + 1, 20).setValue(new Date().toISOString());
+
+        // Invalidate script caches
+        _removeScriptCache("public_active_exams");
+        _removeScriptCache("exam_pub_" + examId);
+        _removeScriptCache("exam_sanitized_q_" + examId);
+
         return _response(true, null, "Ujian berhasil diarsipkan.");
       }
     }
@@ -679,7 +689,7 @@ function deleteExam(sessionId, examId) {
 function toggleExamPortalVisibility(sessionId, examId, showInPortal) {
   var lock = LockService.getScriptLock();
   try {
-    lock.waitLock(10000);
+    lock.waitLock(20000);
     var user = _verifySession(sessionId);
     if (!user) return _response(false, null, "Sesi Anda telah berakhir. Silakan login kembali.");
 
@@ -746,6 +756,10 @@ function toggleExamPortalVisibility(sessionId, examId, showInPortal) {
     sheet.getRange(targetRow, colPortal + 1).setValue(newVisibility ? "TRUE" : "FALSE");
     sheet.getRange(targetRow, 20).setValue(new Date().toISOString());
 
+    // Invalidate script caches
+    _removeScriptCache("public_active_exams");
+    _removeScriptCache("exam_pub_" + examId);
+
     _logAction(user.role, user.teacherId, "TOGGLE_PORTAL", "EXAM", examId, "SUCCESS", "Visibilitas portal diubah menjadi " + (newVisibility ? "TAMPIL" : "SEMBUNYI"));
 
     return _response(true, { examId: examId, showInPortal: newVisibility }, "Visibilitas ujian di portal siswa berhasil " + (newVisibility ? "diaktifkan (Tampil)" : "dinonaktifkan (Disembunyikan)") + ".");
@@ -753,7 +767,7 @@ function toggleExamPortalVisibility(sessionId, examId, showInPortal) {
     console.error("toggleExamPortalVisibility error:", err);
     return _response(false, null, "Gagal mengubah visibilitas ujian: " + err.message);
   } finally {
-    lock.releaseLock();
+    try { lock.releaseLock(); } catch (e) {}
   }
 }
 
@@ -930,7 +944,7 @@ function getQuestions(sessionId, examId) {
 function saveQuestions(sessionId, examId, questionsList) {
   var lock = LockService.getScriptLock();
   try {
-    lock.waitLock(10000);
+    lock.waitLock(20000);
     var user = _verifySession(sessionId);
     if (!user) return _response(false, null, "Sesi tidak valid.");
 
@@ -947,12 +961,13 @@ function saveQuestions(sessionId, examId, questionsList) {
 
     // Archive old questions for this exam
     for (var r = 1; r < data.length; r++) {
-      if (data[r][1] === examId) {
+      if (data[r][1] === examId && data[r][12] !== "ARCHIVED") {
         sheet.getRange(r + 1, 13).setValue("ARCHIVED");
       }
     }
 
-    // Append new / updated questions
+    // Prepare new / updated questions rows for bulk insertion
+    var rowsToAppend = [];
     for (var i = 0; i < questionsList.length; i++) {
       var q = questionsList[i];
       var qId = q.id && String(q.id).startsWith("Q_") ? q.id : ("Q_" + _generateId(8));
@@ -978,7 +993,7 @@ function saveQuestions(sessionId, examId, questionsList) {
       }
       var optStr = JSON.stringify(optionsList);
 
-      sheet.appendRow([
+      rowsToAppend.push([
         qId,
         examId,
         i + 1,
@@ -997,12 +1012,23 @@ function saveQuestions(sessionId, examId, questionsList) {
       ]);
     }
 
+    // Single batch write for all questions
+    if (rowsToAppend.length > 0) {
+      var nextRow = sheet.getLastRow() + 1;
+      sheet.getRange(nextRow, 1, rowsToAppend.length, rowsToAppend[0].length).setValues(rowsToAppend);
+    }
+
+    // Invalidate script caches
+    _removeScriptCache("exam_sanitized_q_" + examId);
+    _removeScriptCache("exam_pub_" + examId);
+    _removeScriptCache("public_active_exams");
+
     return _response(true, null, "Soal berhasil disimpan.");
   } catch (err) {
     console.error("saveQuestions error:", err);
     return _response(false, null, "Gagal menyimpan soal: " + err.message);
   } finally {
-    lock.releaseLock();
+    try { lock.releaseLock(); } catch (e) {}
   }
 }
 
@@ -1016,6 +1042,11 @@ function saveQuestions(sessionId, examId, questionsList) {
  */
 function getActivePublicExams() {
   try {
+    var cached = _getScriptCache("public_active_exams");
+    if (cached && Array.isArray(cached)) {
+      return _response(true, cached, "Daftar ujian aktif berhasil dimuat (cache).");
+    }
+
     var exams = _getTableData(CONFIG.SHEETS.EXAMS);
     var allQ = _getTableData(CONFIG.SHEETS.QUESTIONS);
     var users = _getTableData(CONFIG.SHEETS.USERS);
@@ -1073,6 +1104,8 @@ function getActivePublicExams() {
       return a.title.localeCompare(b.title);
     });
 
+    _setScriptCache("public_active_exams", activeList, 300); // 5 minutes cache
+
     return _response(true, activeList, "Daftar ujian aktif berhasil dimuat.");
   } catch (err) {
     console.error("getActivePublicExams error:", err);
@@ -1087,6 +1120,19 @@ function getActivePublicExams() {
 function getPublicExam(examId) {
   try {
     if (!examId) return _response(false, null, "ID Ujian tidak disertakan.");
+
+    var cacheKey = "exam_pub_" + examId;
+    var cached = _getScriptCache(cacheKey);
+    if (cached) {
+      var now = new Date().getTime();
+      if (cached.startAt && new Date(cached.startAt).getTime() > now) {
+        return _response(false, null, "Ujian belum dimulai. Waktu mulai: " + new Date(cached.startAt).toLocaleString("id-ID"));
+      }
+      if (cached.endAt && new Date(cached.endAt).getTime() < now) {
+        return _response(false, null, "Ujian telah berakhir pada: " + new Date(cached.endAt).toLocaleString("id-ID"));
+      }
+      return _response(true, cached);
+    }
 
     var exams = _getTableData(CONFIG.SHEETS.EXAMS);
     var targetExam = null;
@@ -1121,7 +1167,7 @@ function getPublicExam(examId) {
       return q.examId === examId && q.status !== "ARCHIVED";
     }).length;
 
-    return _response(true, {
+    var payload = {
       examId: targetExam.examId,
       title: targetExam.title,
       subject: targetExam.subject,
@@ -1133,8 +1179,16 @@ function getPublicExam(examId) {
       totalQuestions: qCount,
       kkm: Number(targetExam.kkm || 75),
       maxAttempts: Number(targetExam.maxAttempts || 1),
-      showResult: Boolean(targetExam.showResult !== false)
-    });
+      randomizeQuestions: Boolean(targetExam.randomizeQuestions),
+      randomizeOptions: Boolean(targetExam.randomizeOptions),
+      showResult: Boolean(targetExam.showResult !== false),
+      startAt: targetExam.startAt || "",
+      endAt: targetExam.endAt || ""
+    };
+
+    _setScriptCache(cacheKey, payload, 600); // 10 minutes cache
+
+    return _response(true, payload);
   } catch (err) {
     console.error("getPublicExam error:", err);
     return _response(false, null, "Terjadi kesalahan saat memuat ujian.");
@@ -1142,14 +1196,70 @@ function getPublicExam(examId) {
 }
 
 /**
- * Starts a new student attempt.
- * Returns sanitized questions (answers and scores removed).
+ * Helper to fetch sanitized questions with caching (scores & keys removed).
+ */
+function _getSanitizedQuestions(examId) {
+  var cacheKey = "exam_sanitized_q_" + examId;
+  var cached = _getScriptCache(cacheKey);
+  if (cached && Array.isArray(cached) && cached.length > 0) {
+    return cached;
+  }
+
+  var allQ = _getTableData(CONFIG.SHEETS.QUESTIONS);
+  var activeQ = allQ.filter(function(q) {
+    return q.examId === examId && q.status !== "ARCHIVED";
+  });
+
+  if (activeQ.length === 0) return [];
+
+  activeQ.sort(function(a, b) { return Number(a.orderNo) - Number(b.orderNo); });
+
+  var sanitizedList = [];
+  for (var i = 0; i < activeQ.length; i++) {
+    var rawQ = activeQ[i];
+    var options = [];
+    try {
+      options = JSON.parse(rawQ.optionsJson || "[]");
+    } catch (e) {
+      options = [];
+    }
+
+    if (Array.isArray(options)) {
+      for (var oi = 0; oi < options.length; oi++) {
+        if (options[oi] && options[oi].imageUrl) {
+          options[oi].imageUrl = _normalizeDriveUrl(options[oi].imageUrl);
+        }
+      }
+    }
+
+    var rawImg = rawQ.imageUrl || rawQ.questionImageUrl || rawQ["URL Gambar Soal"] || rawQ["URL Gambar"] || rawQ["Gambar"] || "";
+    var tfType = rawQ.tfType || rawQ["Tipe Pilihan Benar Salah"] || rawQ["Format Benar Salah"] || "BENAR_SALAH";
+
+    // Security: DO NOT include correctAnswer, score, or scoringMethod
+    sanitizedList.push({
+      id: rawQ.questionId,
+      type: rawQ.type,
+      tfType: tfType,
+      text: rawQ.questionText,
+      bottomText: rawQ.bottomText || rawQ["Teks Bawah Gambar"] || rawQ["Teks Lanjutan"] || "",
+      imageUrl: _normalizeDriveUrl(rawImg),
+      options: options
+    });
+  }
+
+  if (sanitizedList.length > 0) {
+    _setScriptCache(cacheKey, sanitizedList, 1800); // 30 minutes cache
+  }
+
+  return sanitizedList;
+}
+
+/**
+ * Starts a new student attempt with ultra-short micro-locking.
+ * Sanitized questions and metadata are retrieved outside the lock.
  */
 function startExamAttempt(examId, participantData) {
-  var lock = LockService.getScriptLock();
   try {
-    lock.waitLock(10000);
-
     if (!examId) return _response(false, null, "ID Ujian tidak valid.");
     if (!participantData || !participantData.name || !participantData.className) {
       return _response(false, null, "Nama dan Kelas wajib diisi.");
@@ -1159,120 +1269,92 @@ function startExamAttempt(examId, participantData) {
       ? String(participantData.nis).trim() 
       : "-";
 
+    // 1. Fetch public exam metadata (from cache or fast read) - OUTSIDE LOCK
     var pubRes = getPublicExam(examId);
     if (!pubRes.success) return pubRes;
     var exam = pubRes.data;
 
-    // Check existing attempts for this participant
-    var allAttempts = _getTableData(CONFIG.SHEETS.ATTEMPTS);
-    var studentAttempts = allAttempts.filter(function(a) {
-      var sameExam = a.examId === examId;
-      var sameClass = String(a.className).trim().toLowerCase() === String(participantData.className).trim().toLowerCase();
-      if (!sameExam || !sameClass) return false;
-
-      if (cleanNis !== "-") {
-        return String(a.nis).trim() === cleanNis;
-      } else {
-        return String(a.participantName).trim().toLowerCase() === String(participantData.name).trim().toLowerCase();
-      }
-    });
-
-    if (studentAttempts.length >= exam.maxAttempts) {
-      return _response(false, null, "Anda telah mencapai batas maksimal percobaan (" + exam.maxAttempts + "x) untuk ujian ini.");
+    // 2. Fetch sanitized questions (from cache or fast read) - OUTSIDE LOCK
+    var baseQuestions = _getSanitizedQuestions(examId);
+    if (!baseQuestions || baseQuestions.length === 0) {
+      return _response(false, null, "Ujian ini belum memiliki soal.");
     }
 
-    var attemptNumber = studentAttempts.length + 1;
+    // Clone baseQuestions so per-student shuffling doesn't alter cached data
+    var studentQuestions = JSON.parse(JSON.stringify(baseQuestions));
+
+    // Shuffle questions if randomizeQuestions is active
+    if (exam.randomizeQuestions) {
+      studentQuestions = _shuffleArray(studentQuestions);
+    }
+
+    // Shuffle options if randomizeOptions is active
+    if (exam.randomizeOptions) {
+      for (var i = 0; i < studentQuestions.length; i++) {
+        var sq = studentQuestions[i];
+        if ((sq.type === "MCQ" || sq.type === "MCQ_COMPLEX") && Array.isArray(sq.options) && sq.options.length > 0) {
+          sq.options = _shuffleArray(sq.options);
+        }
+      }
+    }
+
+    var questionOrder = studentQuestions.map(function(q) { return q.id; });
     var attemptId = "ATT_" + _generateId(12);
     var nowMs = new Date().getTime();
     var deadlineMs = nowMs + (exam.durationMinutes * 60 * 1000);
     var nowIso = new Date(nowMs).toISOString();
     var deadlineIso = new Date(deadlineMs).toISOString();
 
-    // Fetch questions and sanitize
-    var allQ = _getTableData(CONFIG.SHEETS.QUESTIONS);
-    var activeQ = allQ.filter(function(q) {
-      return q.examId === examId && q.status !== "ARCHIVED";
-    });
+    // 3. MICRO-LOCK: Acquire lock ONLY for checking student attempt count & inserting row
+    var lock = LockService.getScriptLock();
+    var attemptNumber = 1;
+    try {
+      lock.waitLock(10000);
 
-    if (activeQ.length === 0) {
-      return _response(false, null, "Ujian ini belum memiliki soal.");
-    }
+      var attemptsSheet = _getSheet(CONFIG.SHEETS.ATTEMPTS);
+      var allAttempts = _getTableData(CONFIG.SHEETS.ATTEMPTS);
+      var studentAttempts = allAttempts.filter(function(a) {
+        var sameExam = a.examId === examId;
+        var sameClass = String(a.className).trim().toLowerCase() === String(participantData.className).trim().toLowerCase();
+        if (!sameExam || !sameClass) return false;
 
-    // Sort or randomize questions
-    activeQ.sort(function(a, b) { return Number(a.orderNo) - Number(b.orderNo); });
-    
-    // Check if exam requires randomization
-    var fullExams = _getTableData(CONFIG.SHEETS.EXAMS);
-    var fullExam = fullExams.filter(function(e) { return e.examId === examId; })[0];
-    
-    if (fullExam && fullExam.randomizeQuestions) {
-      activeQ = _shuffleArray(activeQ);
-    }
-
-    var sanitizedQuestions = [];
-    var questionOrder = [];
-
-    for (var i = 0; i < activeQ.length; i++) {
-      var rawQ = activeQ[i];
-      questionOrder.push(rawQ.questionId);
-
-      var options = [];
-      try {
-        options = JSON.parse(rawQ.optionsJson || "[]");
-      } catch (e) {
-        options = [];
-      }
-
-      if (Array.isArray(options)) {
-        for (var oi = 0; oi < options.length; oi++) {
-          if (options[oi] && options[oi].imageUrl) {
-            options[oi].imageUrl = _normalizeDriveUrl(options[oi].imageUrl);
-          }
+        if (cleanNis !== "-") {
+          return String(a.nis).trim() === cleanNis;
+        } else {
+          return String(a.participantName).trim().toLowerCase() === String(participantData.name).trim().toLowerCase();
         }
-      }
-
-      if (fullExam && fullExam.randomizeOptions && (rawQ.type === "MCQ" || rawQ.type === "MCQ_COMPLEX")) {
-        options = _shuffleArray(options);
-      }
-
-      var rawImg = rawQ.imageUrl || rawQ.questionImageUrl || rawQ["URL Gambar Soal"] || rawQ["URL Gambar"] || rawQ["Gambar"] || "";
-      var tfType = rawQ.tfType || rawQ["Tipe Pilihan Benar Salah"] || rawQ["Format Benar Salah"] || "BENAR_SALAH";
-
-      // Security: DO NOT include correctAnswer, score, or scoringMethod
-      sanitizedQuestions.push({
-        id: rawQ.questionId,
-        type: rawQ.type,
-        tfType: tfType,
-        text: rawQ.questionText,
-        bottomText: rawQ.bottomText || rawQ["Teks Bawah Gambar"] || rawQ["Teks Lanjutan"] || "",
-        imageUrl: _normalizeDriveUrl(rawImg),
-        options: options
       });
-    }
 
-    // Save attempt record
-    var attemptsSheet = _getSheet(CONFIG.SHEETS.ATTEMPTS);
-    attemptsSheet.appendRow([
-      attemptId,
-      examId,
-      participantData.name.trim(),
-      participantData.className.trim(),
-      cleanNis,
-      attemptNumber,
-      nowIso,
-      deadlineIso,
-      "", // submittedAt
-      "IN_PROGRESS",
-      0, // rawScore
-      0, // maxRawScore
-      0, // finalScore
-      exam.kkm,
-      "", // passStatus
-      JSON.stringify(questionOrder),
-      "", // optionOrderJson
-      nowIso,
-      nowIso
-    ]);
+      if (studentAttempts.length >= exam.maxAttempts) {
+        return _response(false, null, "Anda telah mencapai batas maksimal percobaan (" + exam.maxAttempts + "x) untuk ujian ini.");
+      }
+
+      attemptNumber = studentAttempts.length + 1;
+
+      attemptsSheet.appendRow([
+        attemptId,
+        examId,
+        participantData.name.trim(),
+        participantData.className.trim(),
+        cleanNis,
+        attemptNumber,
+        nowIso,
+        deadlineIso,
+        "", // submittedAt
+        "IN_PROGRESS",
+        0, // rawScore
+        0, // maxRawScore
+        0, // finalScore
+        exam.kkm,
+        "", // passStatus
+        JSON.stringify(questionOrder),
+        "", // optionOrderJson
+        nowIso,
+        nowIso
+      ]);
+    } finally {
+      try { lock.releaseLock(); } catch (e) {}
+    }
 
     return _response(true, {
       attemptId: attemptId,
@@ -1280,23 +1362,22 @@ function startExamAttempt(examId, participantData) {
       participantName: participantData.name.trim(),
       className: participantData.className.trim(),
       nis: cleanNis,
-      questions: sanitizedQuestions
+      questions: studentQuestions
     }, "Ujian berhasil dimulai.");
 
   } catch (err) {
     console.error("startExamAttempt error:", err);
     return _response(false, null, "Gagal memulai ujian: " + err.message);
-  } finally {
-    lock.releaseLock();
   }
 }
 
 /**
- * Autosaves student answers periodically.
+ * Autosaves student answers periodically with batch writes.
  */
 function saveAttemptAnswers(attemptId, answersMap) {
   try {
     if (!attemptId) return _response(false, null, "Attempt ID tidak valid.");
+    if (!answersMap || typeof answersMap !== "object") return _response(true, null, "Tidak ada jawaban untuk disimpan.");
 
     var attemptsSheet = _getSheet(CONFIG.SHEETS.ATTEMPTS);
     var attemptsData = attemptsSheet.getDataRange().getValues();
@@ -1326,36 +1407,42 @@ function saveAttemptAnswers(attemptId, answersMap) {
     var answersData = answersSheet.getDataRange().getValues();
     var now = new Date().toISOString();
 
-    // Map existing answers for this attempt
+    // Map existing answers for this attempt: questionId -> row number (1-indexed)
     var existingAnswers = {};
     for (var a = 1; a < answersData.length; a++) {
       if (answersData[a][1] === attemptId) {
-        existingAnswers[answersData[a][3]] = a + 1; // questionId -> row number
+        existingAnswers[answersData[a][3]] = a + 1;
       }
     }
 
+    var newRows = [];
     for (var qId in answersMap) {
       var ansVal = answersMap[qId];
       var ansJson = typeof ansVal === "object" ? JSON.stringify(ansVal) : JSON.stringify(ansVal);
 
       if (existingAnswers[qId]) {
-        // Update
         var row = existingAnswers[qId];
-        answersSheet.getRange(row, 5).setValue(ansJson);
-        answersSheet.getRange(row, 6).setValue(now);
+        // 1 API call for both cols 5 & 6 (answerJson and savedAt)
+        answersSheet.getRange(row, 5, 1, 2).setValues([[ansJson, now]]);
       } else {
-        // Append
         var ansId = "ANS_" + _generateId(10);
-        answersSheet.appendRow([
+        newRows.push([
           ansId, attemptId, attempt.examId, qId, ansJson, now, 0, false, 0
         ]);
+        existingAnswers[qId] = answersData.length + newRows.length;
       }
+    }
+
+    // Batch append new rows in a single API call instead of loop
+    if (newRows.length > 0) {
+      var startRow = answersSheet.getLastRow() + 1;
+      answersSheet.getRange(startRow, 1, newRows.length, newRows[0].length).setValues(newRows);
     }
 
     return _response(true, { savedAt: new Date().getTime() }, "Jawaban tersimpan.");
   } catch (err) {
     console.error("saveAttemptAnswers error:", err);
-    return _response(false, null, "Gagal melakukan autosave.");
+    return _response(false, null, "Gagal melakukan autosave: " + err.message);
   }
 }
 
@@ -1592,20 +1679,25 @@ function submitExamAttempt(attemptId, finalAnswersMap) {
         }
       }
 
+      var newEmptyRows = [];
       for (var qKey in scoringResults) {
         var resObj = scoringResults[qKey];
         if (ansRowMap[qKey]) {
           var rowNum = ansRowMap[qKey];
-          answersSheet.getRange(rowNum, 7).setValue(resObj.qScore);
-          answersSheet.getRange(rowNum, 8).setValue(resObj.isCorrect);
-          answersSheet.getRange(rowNum, 9).setValue(resObj.maxScore);
+          // 1 API call for cols 7, 8, 9 (qScore, isCorrect, maxScore)
+          answersSheet.getRange(rowNum, 7, 1, 3).setValues([[resObj.qScore, resObj.isCorrect, resObj.maxScore]]);
         } else {
-          // If student didn't answer this question, append row with score 0
+          // If student didn't answer this question, collect for bulk append
           var emptyAnsId = "ANS_" + _generateId(10);
-          answersSheet.appendRow([
+          newEmptyRows.push([
             emptyAnsId, attemptId, attempt.examId, qKey, JSON.stringify(""), new Date().toISOString(), 0, false, resObj.maxScore
           ]);
         }
+      }
+
+      if (newEmptyRows.length > 0) {
+        var startRow = answersSheet.getLastRow() + 1;
+        answersSheet.getRange(startRow, 1, newEmptyRows.length, newEmptyRows[0].length).setValues(newEmptyRows);
       }
     } catch (ansUpdateErr) {
       console.error("Failed to update answers sheet scores:", ansUpdateErr);
@@ -1621,16 +1713,22 @@ function submitExamAttempt(attemptId, finalAnswersMap) {
     var passStatus = finalScore >= attempt.kkm ? "LULUS" : "BELUM LULUS";
     var nowIso = new Date().toISOString();
 
-    // Update Attempt row in sheet
-    attemptsSheet.getRange(attemptRow, 9).setValue(nowIso); // submittedAt
-    attemptsSheet.getRange(attemptRow, 10).setValue("SUBMITTED"); // status
-    attemptsSheet.getRange(attemptRow, 11).setValue(totalRawScore); // rawScore
-    attemptsSheet.getRange(attemptRow, 12).setValue(totalMaxScore); // maxRawScore
-    attemptsSheet.getRange(attemptRow, 13).setValue(finalScore); // finalScore
-    attemptsSheet.getRange(attemptRow, 15).setValue(passStatus); // passStatus
-    attemptsSheet.getRange(attemptRow, 18).setValue(nowIso); // updatedAt
+    // Update Attempt row in sheet with 1 single batch call instead of 7 roundtrips
+    var oldAttemptRow = attemptsData[attemptRow - 1];
+    attemptsSheet.getRange(attemptRow, 9, 1, 10).setValues([[
+      nowIso,         // 9: submittedAt
+      "SUBMITTED",    // 10: status
+      totalRawScore,  // 11: rawScore
+      totalMaxScore,  // 12: maxRawScore
+      finalScore,     // 13: finalScore
+      attempt.kkm,    // 14: kkm
+      passStatus,     // 15: passStatus
+      oldAttemptRow[15] || "", // 16: questionOrderJson
+      oldAttemptRow[16] || "", // 17: optionOrderJson
+      nowIso          // 18: updatedAt
+    ]]);
 
-    // Fetch exam configuration to check showResult
+    // Fetch exam configuration to check showResult (uses cache!)
     var examRes = getPublicExam(attempt.examId);
     var showResult = examRes.success && examRes.data.showResult;
 
@@ -1655,7 +1753,7 @@ function submitExamAttempt(attemptId, finalAnswersMap) {
     console.error("submitExamAttempt error:", err);
     return _response(false, null, "Gagal mengumpulkan ujian: " + err.message);
   } finally {
-    lock.releaseLock();
+    try { lock.releaseLock(); } catch (e) {}
   }
 }
 
@@ -2271,6 +2369,39 @@ function _normalizeDriveUrl(url) {
 // ============================================================================
 // 10. UTILITY & HELPER FUNCTIONS
 // ============================================================================
+
+/**
+ * Script Cache Helpers (High-Concurrency Performance Accelerator)
+ */
+function _getScriptCache(key) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var val = cache.get(key);
+    if (!val) return null;
+    return JSON.parse(val);
+  } catch (e) {
+    return null;
+  }
+}
+
+function _setScriptCache(key, obj, ttlSeconds) {
+  try {
+    var cache = CacheService.getScriptCache();
+    var str = JSON.stringify(obj);
+    if (str.length < 95000) {
+      cache.put(key, str, ttlSeconds || 300);
+    }
+  } catch (e) {
+    console.warn("Failed to set cache for " + key + ":", e);
+  }
+}
+
+function _removeScriptCache(key) {
+  try {
+    var cache = CacheService.getScriptCache();
+    cache.remove(key);
+  } catch (e) {}
+}
 
 /**
  * Consistent API response wrapper

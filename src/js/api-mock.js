@@ -4,7 +4,7 @@
 
 const isGAS = typeof google !== 'undefined' && Boolean(google.script && google.script.run);
 
-function _callGAS(functionName, ...args) {
+function _singleCallGAS(functionName, args) {
     return new Promise((resolve) => {
         try {
             google.script.run
@@ -13,10 +13,11 @@ function _callGAS(functionName, ...args) {
                 })
                 .withFailureHandler((err) => {
                     console.error(`Apps Script Error in ${functionName}:`, err);
+                    var msg = err && err.message ? err.message : (typeof err === 'string' ? err : "Terjadi kesalahan server Google Apps Script.");
                     resolve({ 
                         success: false, 
                         data: null, 
-                        message: err.message || "Terjadi kesalahan server Google Apps Script." 
+                        message: msg
                     });
                 })[functionName](...args);
         } catch (e) {
@@ -24,6 +25,38 @@ function _callGAS(functionName, ...args) {
             resolve({ success: false, data: null, message: e.message });
         }
     });
+}
+
+async function _callGAS(functionName, ...args) {
+    const maxRetries = 2;
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        const res = await _singleCallGAS(functionName, args);
+        if (res && res.success) {
+            return res;
+        }
+
+        const msg = ((res && res.message) || '').toLowerCase();
+        const isTransient = msg.includes('penguncian') || 
+                            msg.includes('lock') || 
+                            msg.includes('terlalu banyak skrip') || 
+                            msg.includes('concurrent') || 
+                            msg.includes('quota') || 
+                            msg.includes('limit') || 
+                            msg.includes('exceeded') || 
+                            msg.includes('rate') || 
+                            msg.includes('busy') ||
+                            msg.includes('service invoked too many times') ||
+                            msg.includes('proses lain menahan kunci');
+
+        if (isTransient && attempt < maxRetries) {
+            const delay = Math.floor(700 + Math.random() * 600) * (attempt + 1);
+            console.warn(`[GAS Concurrency Retry] ${functionName} got: "${res.message}". Menunggu ${delay}ms sebelum mencoba lagi (percobaan ${attempt + 1}/${maxRetries})...`);
+            await new Promise(r => setTimeout(r, delay));
+            continue;
+        }
+
+        return res;
+    }
 }
 
 // Local mock database storage key

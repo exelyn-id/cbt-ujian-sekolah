@@ -8,6 +8,22 @@ Router.addRoute('/student/exam', async () => {
     const questions = AppState.questions || [];
     let currentIndex = 0; // Local state for pagination
 
+    // Restore locally saved answers from localStorage if available
+    const attemptId = AppState.attempt ? AppState.attempt.attemptId : null;
+    if (attemptId) {
+        try {
+            const cachedAnswers = localStorage.getItem('cbt_ans_' + attemptId);
+            if (cachedAnswers) {
+                const parsed = JSON.parse(cachedAnswers);
+                if (parsed && typeof parsed === 'object') {
+                    AppState.answers = Object.assign({}, parsed, AppState.answers || {});
+                }
+            }
+        } catch (e) {
+            console.warn("Failed to load local cached answers:", e);
+        }
+    }
+
     // Helper to render question
     window.renderQuestion = function(index) {
         currentIndex = index;
@@ -147,29 +163,58 @@ Router.addRoute('/student/exam', async () => {
         updateProgress();
     };
 
-    let autosaveTimeout = null;
-    const triggerAutosave = () => {
+    let hasPendingCloudSync = false;
+    let isSyncing = false;
+
+    const persistLocalAnswer = () => {
+        if (!attemptId) return;
+        try {
+            localStorage.setItem('cbt_ans_' + attemptId, JSON.stringify(AppState.answers));
+        } catch (e) {
+            console.warn("localStorage quota exceeded or unavailable:", e);
+        }
+        hasPendingCloudSync = true;
+        const indicator = document.getElementById('autosaveIndicator');
+        if (indicator && !isSyncing) {
+            indicator.innerHTML = '<i class="ph ph-check text-success"></i> <span class="hidden sm-inline">Tersimpan di perangkat</span><span class="sm-hidden">Tersimpan</span>';
+        }
+    };
+
+    const triggerCloudSync = async () => {
+        if (!hasPendingCloudSync || isSyncing || !attemptId) return;
+        isSyncing = true;
         const indicator = document.getElementById('autosaveIndicator');
         if (indicator) {
-            indicator.innerHTML = '<i class="ph ph-spinner ph-spin text-warning"></i> Menyimpan...';
+            indicator.innerHTML = '<i class="ph ph-spinner ph-spin text-warning"></i> <span class="hidden sm-inline">Menyinkronkan...</span>';
         }
 
-        if (autosaveTimeout) clearTimeout(autosaveTimeout);
-        autosaveTimeout = setTimeout(async () => {
-            try {
-                if (AppState.attempt && AppState.attempt.attemptId) {
-                    await api.saveAttemptAnswers(AppState.attempt.attemptId, AppState.answers);
-                    if (indicator) {
-                        indicator.innerHTML = '<i class="ph ph-cloud-check text-success"></i> Tersimpan';
-                    }
-                }
-            } catch (e) {
+        try {
+            const res = await api.saveAttemptAnswers(attemptId, AppState.answers);
+            if (res && res.success) {
+                hasPendingCloudSync = false;
                 if (indicator) {
-                    indicator.innerHTML = '<i class="ph ph-warning text-error"></i> Gagal simpan';
+                    indicator.innerHTML = '<i class="ph ph-cloud-check text-success"></i> <span class="hidden sm-inline">Tersinkron</span>';
+                }
+            } else {
+                if (indicator) {
+                    indicator.innerHTML = '<i class="ph ph-check text-success"></i> <span class="hidden sm-inline">Tersimpan lokal</span>';
                 }
             }
-        }, 600);
+        } catch (e) {
+            if (indicator) {
+                indicator.innerHTML = '<i class="ph ph-check text-success"></i> <span class="hidden sm-inline">Tersimpan lokal</span>';
+            }
+        } finally {
+            isSyncing = false;
+        }
     };
+
+    // Clean up previous sync timer if any and start fresh 45s throttled sync
+    if (window._cbtCloudSyncInterval) {
+        clearInterval(window._cbtCloudSyncInterval);
+        window._cbtCloudSyncInterval = null;
+    }
+    window._cbtCloudSyncInterval = setInterval(triggerCloudSync, 45000);
 
     window.handleAnswer = function(questionId, optionId, type, isChecked = true) {
         if (type === 'MCQ') {
@@ -186,7 +231,7 @@ Router.addRoute('/student/exam', async () => {
             AppState.answers[questionId] = current;
         }
         
-        triggerAutosave();
+        persistLocalAnswer();
         renderQuestion(currentIndex);
     };
 
@@ -198,7 +243,7 @@ Router.addRoute('/student/exam', async () => {
         current[statementId] = value;
         AppState.answers[questionId] = current;
 
-        triggerAutosave();
+        persistLocalAnswer();
         renderQuestion(currentIndex);
     };
 
@@ -248,12 +293,19 @@ Router.addRoute('/student/exam', async () => {
     window.executeSubmit = async function() {
         closeModal();
         if (AppState.timer) clearInterval(AppState.timer);
+        if (window._cbtCloudSyncInterval) {
+            clearInterval(window._cbtCloudSyncInterval);
+            window._cbtCloudSyncInterval = null;
+        }
 
         document.getElementById('app').innerHTML = '<div class="loading-full"><i class="ph ph-spinner ph-spin"></i><span>Memproses dan menilai jawaban Anda...</span></div>';
         
         try {
             const res = await api.submitExamAttempt(AppState.attempt.attemptId, AppState.answers);
             if (res.success && res.data) {
+                try {
+                    localStorage.removeItem('cbt_ans_' + AppState.attempt.attemptId);
+                } catch (e) {}
                 AppState.update({ 
                     attempt: { 
                         ...AppState.attempt, 
@@ -314,8 +366,8 @@ Router.addRoute('/student/exam', async () => {
                         <div class="text-xs text-muted" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${escapeHtml(AppState.attempt.participantName)} - ${escapeHtml(AppState.attempt.className)}</div>
                     </div>
                     <div class="flex items-center gap-2" style="flex-shrink: 0;">
-                        <div id="autosaveIndicator" class="text-xs font-medium flex items-center gap-1 hidden sm-flex">
-                            <i class="ph ph-cloud-check text-success"></i> Tersimpan
+                        <div id="autosaveIndicator" class="text-xs font-medium flex items-center gap-1" style="color: var(--text-secondary); white-space: nowrap;">
+                            <i class="ph ph-check text-success"></i> <span class="hidden sm-inline">Tersimpan di perangkat</span><span class="sm-hidden">Tersimpan</span>
                         </div>
                         <div class="card flex items-center gap-1.5" style="padding: 0.35rem 0.65rem; border-color: var(--primary-200); background: var(--primary-50);">
                             <i class="ph ph-timer text-primary"></i>
@@ -328,11 +380,15 @@ Router.addRoute('/student/exam', async () => {
             <div class="container mt-4" style="box-sizing: border-box; width: 100%; max-width: 100%;">
                 <style>
                     .exam-layout { display: grid; grid-template-columns: 1fr 300px; gap: 1.5rem; align-items: start; width: 100%; max-width: 100%; box-sizing: border-box; }
+                    @media (min-width: 769px) {
+                        .sm-hidden { display: none !important; }
+                    }
                     @media (max-width: 768px) {
                         .exam-layout { display: flex; flex-direction: column; gap: 1rem; width: 100%; max-width: 100%; box-sizing: border-box; }
                         #questionContainer { order: 1; width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; }
                         .sidebar-nav { order: 2; position: relative !important; top: 0 !important; width: 100% !important; max-width: 100% !important; box-sizing: border-box !important; }
-                        .hidden.sm-flex { display: none; }
+                        .hidden.sm-flex { display: none !important; }
+                        .hidden.sm-inline { display: none !important; }
                     }
                 </style>
                 <div class="exam-layout">
