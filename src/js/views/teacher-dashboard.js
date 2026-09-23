@@ -64,6 +64,12 @@ Router.addRoute('/dashboard', async () => {
                         <button class="btn btn-icon btn-secondary" onclick="Router.navigate('/results?examId=${e.examId}')" title="Lihat Hasil">
                             <i class="ph ph-chart-bar"></i>
                         </button>
+                        <button class="btn btn-icon btn-secondary text-success" onclick="downloadExamQuestionsFromDashboard('${e.examId}', '${escapeHtml(e.title)}')" title="Download Soal Excel (.xlsx)">
+                            <i class="ph ph-file-arrow-down"></i>
+                        </button>
+                        <button class="btn btn-icon btn-secondary" style="color: var(--primary-600);" onclick="downloadExamResultsFromDashboard('${e.examId}', '${escapeHtml(e.title)}')" title="Download Hasil Ujian Siswa (.xlsx)">
+                            <i class="ph ph-microsoft-excel-logo"></i>
+                        </button>
                         <button class="btn btn-icon btn-secondary" onclick="handleDuplicateExam('${e.examId}')" title="Duplikasi Ujian">
                             <i class="ph ph-copy"></i>
                         </button>
@@ -129,6 +135,15 @@ Router.addRoute('/dashboard', async () => {
                     </button>
                     <button class="btn btn-secondary" onclick="handleDuplicateExam('${e.examId}')">
                         <i class="ph ph-copy"></i> Duplikat
+                    </button>
+                </div>
+
+                <div class="action-group-secondary" style="margin-top: 0.35rem;">
+                    <button class="btn btn-secondary text-success" onclick="downloadExamQuestionsFromDashboard('${e.examId}', '${escapeHtml(e.title)}')">
+                        <i class="ph ph-file-arrow-down"></i> Soal (.xlsx)
+                    </button>
+                    <button class="btn btn-secondary text-primary" onclick="downloadExamResultsFromDashboard('${e.examId}', '${escapeHtml(e.title)}')">
+                        <i class="ph ph-microsoft-excel-logo"></i> Hasil (.xlsx)
                     </button>
                 </div>
 

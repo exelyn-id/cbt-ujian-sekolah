@@ -599,6 +599,9 @@ Router.addRoute('/question-builder', async (params) => {
                     <button class="btn btn-outline-primary" onclick="openImportModal()">
                         <i class="ph ph-microsoft-excel-logo text-success"></i> Import Excel
                     </button>
+                    <button class="btn btn-outline-success" onclick="downloadCurrentQuestionsExcel()">
+                        <i class="ph ph-file-arrow-down text-success"></i> Download Soal (Excel)
+                    </button>
                 </div>
             </div>
         `;
@@ -637,6 +640,11 @@ Router.addRoute('/question-builder', async (params) => {
             console.error("Download template error:", err);
             UI.showToast('Gagal membuat file template Excel.', 'error');
         }
+    };
+
+    window.downloadCurrentQuestionsExcel = function() {
+        const examTitle = (AppState.currentExam && AppState.currentExam.title) || 'Ujian';
+        downloadQuestionsAsExcel(questions, examTitle);
     };
 
     let pendingImportQuestions = [];
@@ -769,6 +777,10 @@ Router.addRoute('/question-builder', async (params) => {
                     ['url gambar soal', 'url gambar', 'gambar soal', 'gambar', 'image', 'foto', 'link gambar', 'url foto'], 
                     ['gambar', 'image', 'foto']
                 );
+                const colBottom = getCol(
+                    ['teks bawah gambar', 'teks lanjutan', 'teks soal bawah', 'teks bawah', 'bottom text'],
+                    ['bawah gambar', 'teks lanjutan']
+                );
                 const colKey = getCol(
                     ['kunci jawaban', 'kunci', 'jawaban benar', 'kunci soal', 'key', 'answer'], 
                     ['kunci', 'key']
@@ -853,6 +865,7 @@ Router.addRoute('/question-builder', async (params) => {
 
                     // Handle options offset based on whether image column was present
                     const rawImg = hasExplicitImgCol ? getVal(colImg, -1) : '';
+                    const bottomText = (colBottom !== -1) ? getVal(colBottom, -1) : '';
                     const optA = getVal(colOptA, hasExplicitImgCol ? 4 : 3);
                     const optB = getVal(colOptB, hasExplicitImgCol ? 5 : 4);
                     const optC = getVal(colOptC, hasExplicitImgCol ? 6 : 5);
@@ -938,6 +951,7 @@ Router.addRoute('/question-builder', async (params) => {
                         type: type,
                         tfType: tfType,
                         text: questionText,
+                        bottomText: bottomText,
                         imageUrl: formatDirectImageUrl(rawImg),
                         score: score,
                         options: options,
@@ -1067,6 +1081,9 @@ Router.addRoute('/question-builder', async (params) => {
                             <i class="ph ph-user-circle"></i>
                             <span>${escapeHtml(AppState.user ? (AppState.user.teacherName || AppState.user.username || 'Guru') : 'Guru')}</span>
                         </div>
+                        <button class="btn btn-outline-success btn-sm flex items-center gap-1.5" onclick="downloadCurrentQuestionsExcel()" title="Download seluruh soal ujian ini ke file Excel (.xlsx)">
+                            <i class="ph ph-file-arrow-down text-success"></i> <span class="hidden sm-inline">Download Soal</span> Excel
+                        </button>
                         <button class="btn btn-outline-primary btn-sm" onclick="openImportModal()">
                             <i class="ph ph-microsoft-excel-logo text-success"></i> <span class="hidden sm-inline">Import</span> Excel
                         </button>
@@ -1106,6 +1123,9 @@ Router.addRoute('/question-builder', async (params) => {
                             <button class="btn btn-outline-primary justify-center w-full" onclick="openImportModal()">
                                 <i class="ph ph-microsoft-excel-logo text-success"></i> Import Excel
                             </button>
+                            <button class="btn btn-outline-success justify-center w-full" onclick="downloadCurrentQuestionsExcel()">
+                                <i class="ph ph-file-arrow-down text-success"></i> Download Soal (Excel)
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -1115,6 +1135,9 @@ Router.addRoute('/question-builder', async (params) => {
             <div class="qb-mobile-floating-bar">
                 <button class="btn btn-secondary" onclick="addQuestion('MCQ')">
                     <i class="ph ph-plus"></i> + Soal
+                </button>
+                <button class="btn btn-outline-success" onclick="downloadCurrentQuestionsExcel()" title="Download Soal">
+                    <i class="ph ph-file-arrow-down"></i> Excel
                 </button>
                 <button class="btn btn-outline-primary" onclick="openImportModal()">
                     <i class="ph ph-microsoft-excel-logo text-success"></i> Import

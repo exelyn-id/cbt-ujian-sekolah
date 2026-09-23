@@ -1799,6 +1799,137 @@ function exportExamResults(sessionId, examId) {
 }
 
 /**
+ * Retrieves full export data (exam info, questions, student attempts, and answers) for Excel generation.
+ */
+function getExamResultsExportData(sessionId, examId) {
+  try {
+    var user = _verifySession(sessionId);
+    if (!user) return _response(false, null, "Sesi tidak valid.");
+
+    var examRes = getExam(sessionId, examId);
+    if (!examRes.success) return examRes;
+    var exam = examRes.data;
+
+    // 1. Questions
+    var allQ = _getTableData(CONFIG.SHEETS.QUESTIONS);
+    var examQuestions = [];
+    for (var i = 0; i < allQ.length; i++) {
+      var q = allQ[i];
+      if (q.examId === examId && q.status !== "ARCHIVED") {
+        var options = [];
+        try { options = JSON.parse(q.optionsJson || "[]"); } catch (e) {}
+        var rawKey = q.correctAnswer;
+        try {
+          if (q.type === "MCQ_COMPLEX" || (typeof rawKey === "string" && rawKey.trim().startsWith("{"))) {
+            rawKey = JSON.parse(rawKey);
+          }
+        } catch (e) {}
+        examQuestions.push({
+          questionId: q.questionId,
+          orderNo: Number(q.orderNo || (examQuestions.length + 1)),
+          type: q.type,
+          tfType: q.tfType || q["Tipe Pilihan Benar Salah"] || q["Format Benar Salah"] || "BENAR_SALAH",
+          text: q.questionText,
+          bottomText: q.bottomText || q["Teks Bawah Gambar"] || q["Teks Lanjutan"] || "",
+          imageUrl: _normalizeDriveUrl(q.imageUrl || q.questionImageUrl || ""),
+          score: Number(q.score || 10),
+          options: options,
+          correctAnswer: rawKey
+        });
+      }
+    }
+    examQuestions.sort(function(a, b) { return a.orderNo - b.orderNo; });
+
+    // 2. Attempts
+    var allAttempts = _getTableData(CONFIG.SHEETS.ATTEMPTS);
+    var examAttempts = allAttempts.filter(function(a) { return a.examId === examId; });
+
+    // 3. Answers
+    var allAnswers = _getTableData(CONFIG.SHEETS.ANSWERS);
+    var examAnswers = allAnswers.filter(function(ans) { return ans.examId === examId; });
+
+    var answersByAttempt = {};
+    for (var ai = 0; ai < examAnswers.length; ai++) {
+      var ans = examAnswers[ai];
+      var attId = ans.attemptId;
+      if (!answersByAttempt[attId]) answersByAttempt[attId] = {};
+
+      var parsedAnswer = ans.studentAnswer;
+      try {
+        if (typeof parsedAnswer === "string" && (parsedAnswer.trim().startsWith("{") || parsedAnswer.trim().startsWith("["))) {
+          parsedAnswer = JSON.parse(parsedAnswer);
+        }
+      } catch (e) {}
+
+      answersByAttempt[attId][ans.questionId] = {
+        studentAnswer: parsedAnswer,
+        isCorrect: ans.isCorrect === true || String(ans.isCorrect).toUpperCase() === "TRUE",
+        awardedScore: Number(ans.awardedScore || ans.finalScore || 0)
+      };
+    }
+
+    var attemptsPayload = [];
+    for (var j = 0; j < examAttempts.length; j++) {
+      var att = examAttempts[j];
+      var attId = att.attemptId;
+      var studentAnswers = answersByAttempt[attId] || {};
+
+      var totalCorrect = 0;
+      var totalWrong = 0;
+      for (var qk = 0; qk < examQuestions.length; qk++) {
+        var qId = examQuestions[qk].questionId;
+        if (studentAnswers[qId]) {
+          if (studentAnswers[qId].isCorrect) totalCorrect++;
+          else totalWrong++;
+        }
+      }
+
+      var isSubmitted = att.status === "SUBMITTED";
+      var scoreVal = isSubmitted ? Number(att.finalScore || 0) : null;
+      var kkmVal = Number(att.kkm || exam.kkm || 75);
+      var passStatusVal = att.passStatus;
+      if (!passStatusVal && isSubmitted) {
+        passStatusVal = scoreVal >= kkmVal ? "LULUS" : "TIDAK LULUS";
+      }
+
+      attemptsPayload.push({
+        attemptId: attId,
+        nis: att.nis || "-",
+        name: att.participantName,
+        className: att.className,
+        attemptNumber: Number(att.attemptNumber || 1),
+        status: att.status,
+        score: scoreVal,
+        kkm: kkmVal,
+        passStatus: passStatusVal || "-",
+        startedAt: att.startedAt,
+        submittedAt: att.submittedAt,
+        totalCorrect: totalCorrect,
+        totalWrong: totalWrong,
+        answers: studentAnswers
+      });
+    }
+
+    return _response(true, {
+      exam: {
+        examId: exam.examId,
+        title: exam.title,
+        subject: exam.subject,
+        className: exam.className,
+        kkm: exam.kkm,
+        durationMinutes: exam.durationMinutes
+      },
+      questions: examQuestions,
+      attempts: attemptsPayload
+    });
+  } catch (err) {
+    console.error("getExamResultsExportData error:", err);
+    return _response(false, null, "Gagal memuat data ekspor hasil ujian: " + err.message);
+  }
+}
+
+
+/**
  * Retrieves detailed answers for a specific student attempt.
  * Returns question details, options, student's selected answer, correct key, score, and correctness.
  */

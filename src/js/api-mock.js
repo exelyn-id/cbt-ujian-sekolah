@@ -566,6 +566,46 @@ const api = {
         };
     },
 
+    async getExamResultsExportData(sessionId, examId) {
+        if (isGAS) return _callGAS('getExamResultsExportData', sessionId, examId);
+
+        await this._delay(800);
+        const exam = MOCK_EXAMS.find(e => e.examId === examId) || {
+            examId: examId,
+            title: 'Ujian Simulasi',
+            subject: 'Umum',
+            className: 'XII.1',
+            kkm: 75,
+            durationMinutes: 60
+        };
+        const questions = MOCK_QUESTIONS.filter(q => q.examId === examId);
+        const attempts = (MOCK_ATTEMPTS || []).filter(a => a.examId === examId).map(att => {
+            const answers = {};
+            questions.forEach(q => {
+                answers[q.questionId] = {
+                    studentAnswer: q.type === 'TRUE_FALSE' ? { '1': 'TRUE', '2': 'FALSE' } : (q.type === 'MCQ_COMPLEX' ? ['A'] : 'A'),
+                    isCorrect: true,
+                    awardedScore: q.score || 10
+                };
+            });
+            return {
+                ...att,
+                totalCorrect: questions.length,
+                totalWrong: 0,
+                answers: answers
+            };
+        });
+
+        return {
+            success: true,
+            data: {
+                exam: exam,
+                questions: questions,
+                attempts: attempts
+            }
+        };
+    },
+
     async uploadImage(sessionId, base64Data, filename, mimeType) {
         if (isGAS) return _callGAS('uploadImage', sessionId, base64Data, filename, mimeType);
 

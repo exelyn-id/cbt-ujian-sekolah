@@ -32,32 +32,7 @@ const renderTeacherResults = async (params) => {
     }
 
     window.handleExport = async function() {
-        const btn = document.getElementById('exportBtn');
-        if (btn) {
-            btn.disabled = true;
-            btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Menyiapkan Export...';
-        }
-
-        try {
-            const res = await api.exportExamResults(AppState.user.sessionId, examId);
-            if (res.success && res.data && res.data.url) {
-                UI.showToast('Berhasil mengekspor hasil!', 'success');
-                if (res.data.url.startsWith('http')) {
-                    window.open(res.data.url, '_blank');
-                } else {
-                    UI.showToast(res.message || 'File export siap.', 'success');
-                }
-            } else {
-                UI.showToast(res.message || 'Gagal mengekspor data.', 'error');
-            }
-        } catch (e) {
-            UI.showToast('Terjadi kesalahan saat export.', 'error');
-        } finally {
-            if (btn) {
-                btn.disabled = false;
-                btn.innerHTML = '<i class="ph ph-download-simple"></i> Export Spreadsheet';
-            }
-        }
+        await downloadExamResultsExcel(examId, (AppState.currentExam && AppState.currentExam.title) || '', 'exportBtn');
     };
 
     return `
@@ -78,8 +53,11 @@ const renderTeacherResults = async (params) => {
                         <button class="btn btn-secondary btn-sm" onclick="Router.handleRoute()" title="Muat Ulang Data">
                             <i class="ph ph-arrow-clockwise"></i> Refresh
                         </button>
-                        <button id="exportBtn" class="btn btn-primary btn-sm" onclick="handleExport()">
-                            <i class="ph ph-download-simple"></i> Export Excel
+                        <button class="btn btn-outline-success btn-sm flex items-center gap-1.5" onclick="downloadExamQuestionsExcel('${examId}', (AppState.currentExam && AppState.currentExam.title) || '')" title="Download Soal Ujian ini dalam file Excel (.xlsx)">
+                            <i class="ph ph-file-arrow-down text-success"></i> <span class="hidden sm-inline">Download</span> Soal (.xlsx)
+                        </button>
+                        <button id="exportBtn" class="btn btn-primary btn-sm flex items-center gap-1.5" onclick="handleExport()" title="Download Rekap Hasil & Jawaban Siswa (.xlsx)">
+                            <i class="ph ph-microsoft-excel-logo"></i> <span class="hidden sm-inline">Download</span> Hasil (.xlsx)
                         </button>
                     </div>
                 </div>
