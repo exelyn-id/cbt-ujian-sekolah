@@ -746,8 +746,6 @@ async function getExamResultsExportData(examId) {
                     totalWrong: totalWrong,
                     answers: answersMap
                 });
-            }
-        }
     }
 
     return { exam, questions, attempts };
