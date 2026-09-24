@@ -397,10 +397,6 @@ const api = {
     // 3. QUESTIONS
     async getQuestions(sessionId, examId) {
         if (isGAS) return _callGAS('getQuestions', sessionId, examId);
-        if (isVercel) {
-            const vRes = await _callVercel('/api/teacher?action=get_questions', 'POST', { sessionId, examId });
-            if (vRes && vRes.success && Array.isArray(vRes.data)) return vRes;
-        }
 
         await this._delay();
         const db = _getMockDB();
@@ -410,71 +406,12 @@ const api = {
 
     async saveQuestions(sessionId, examId, questionsList) {
         if (isGAS) return _callGAS('saveQuestions', sessionId, examId, questionsList);
-        if (isVercel) {
-            const vRes = await _callVercel('/api/teacher?action=save_questions', 'POST', { sessionId, examId, questionsList });
-            if (vRes && vRes.success) return vRes;
-        }
 
         await this._delay();
         const db = _getMockDB();
         db.questions[examId] = questionsList;
         _saveMockDB(db);
         return { success: true, message: 'Soal berhasil disimpan.' };
-    },
-
-    // 3B. USER MANAGEMENT (Vercel Primary DB + Sheets Mirror)
-    async getUsers(sessionId) {
-        if (isGAS) return _callGAS('getUsers', sessionId);
-        if (isVercel) {
-            const vRes = await _callVercel('/api/teacher?action=get_users', 'POST', { sessionId });
-            if (vRes && vRes.success && Array.isArray(vRes.data)) return vRes;
-        }
-
-        await this._delay();
-        const db = _getMockDB();
-        return { success: true, data: db.users || [] };
-    },
-
-    async saveUser(sessionId, user) {
-        if (isGAS) return _callGAS('saveUser', sessionId, user);
-        if (isVercel) {
-            const vRes = await _callVercel('/api/teacher?action=save_user', 'POST', { sessionId, user });
-            if (vRes && vRes.success) return vRes;
-        }
-
-        await this._delay();
-        const db = _getMockDB();
-        if (!db.users) db.users = [];
-        const uIdx = db.users.findIndex(u => u.username === user.username);
-        if (uIdx !== -1) db.users[uIdx] = { ...db.users[uIdx], ...user };
-        else db.users.push(user);
-        _saveMockDB(db);
-        return { success: true, data: user, message: 'Pengguna berhasil disimpan.' };
-    },
-
-    async deleteUser(sessionId, username, userId) {
-        if (isGAS) return _callGAS('deleteUser', sessionId, username, userId);
-        if (isVercel) {
-            const vRes = await _callVercel('/api/teacher?action=delete_user', 'POST', { sessionId, username, userId });
-            if (vRes && vRes.success) return vRes;
-        }
-
-        await this._delay();
-        const db = _getMockDB();
-        if (db.users) {
-            db.users = db.users.filter(u => u.username !== username && u.userId !== userId);
-            _saveMockDB(db);
-        }
-        return { success: true, message: 'Pengguna berhasil dihapus.' };
-    },
-
-    async syncPullFromSheets(sessionId) {
-        if (isVercel) {
-            const vRes = await _callVercel('/api/teacher?action=sync_pull_from_sheets', 'POST', { sessionId });
-            if (vRes && vRes.success) return vRes;
-            return vRes || { success: false, message: 'Gagal menarik data.' };
-        }
-        return { success: false, message: 'Fitur tarik data hanya tersedia di Vercel.' };
     },
 
     // 4. PARTICIPANT / STUDENT
