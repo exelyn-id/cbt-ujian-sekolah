@@ -173,6 +173,45 @@ Router.addRoute('/question-builder', async (params) => {
         }
     };
 
+    window.updateOptionScore = function(qIndex, optIndex, value) {
+        if (questions[qIndex] && questions[qIndex].options && questions[qIndex].options[optIndex]) {
+            const v = String(value).trim();
+            questions[qIndex].options[optIndex].score = v === '' ? null : Number(v);
+        }
+    };
+
+    window.updateStatementScore = function(qIndex, sIndex, value) {
+        if (questions[qIndex] && questions[qIndex].options && questions[qIndex].options[sIndex]) {
+            const v = String(value).trim();
+            questions[qIndex].options[sIndex].score = v === '' ? null : Number(v);
+        }
+    };
+
+    window.syncQuestionScoreWithCustomPoints = function(qIndex) {
+        const q = questions[qIndex];
+        if (!q || !Array.isArray(q.options)) return;
+        let sum = 0;
+        if (q.type === 'TRUE_FALSE') {
+            q.options.forEach(o => {
+                if (o.score !== undefined && o.score !== null && o.score !== '') {
+                    sum += Number(o.score);
+                }
+            });
+        } else if (q.type === 'MCQ_COMPLEX') {
+            const answerArr = Array.isArray(q.correctAnswer) ? q.correctAnswer : [];
+            q.options.forEach(o => {
+                if (answerArr.includes(o.id) && o.score !== undefined && o.score !== null && o.score !== '') {
+                    sum += Number(o.score);
+                }
+            });
+        }
+        if (sum > 0) {
+            q.score = Math.round(sum * 100) / 100;
+            renderQuestionsList();
+            UI.showToast(`Skor total soal disesuaikan menjadi ${q.score} poin.`, 'success');
+        }
+    };
+
     window.updateOptionText = function(qIndex, optIndex, value) {
         if (questions[qIndex] && questions[qIndex].options[optIndex]) {
             questions[qIndex].options[optIndex].text = value;
@@ -406,6 +445,7 @@ Router.addRoute('/question-builder', async (params) => {
                     const tfType = q.tfType || 'BENAR_SALAH';
                     const tfLabels = getTfLabels(tfType);
 
+                    const isPartial = q.scoringMethod === 'PARTIAL';
                     optionsHtml = `
                         <div class="tf-builder-table-wrap mb-3" style="border: 1px solid var(--border-color); border-radius: var(--radius-md); overflow: hidden; background: #ffffff;">
                             <!-- Header Bar with Format Selector -->
@@ -421,7 +461,10 @@ Router.addRoute('/question-builder', async (params) => {
                                         <option value="TEPAT_TIDAK" ${tfType === 'TEPAT_TIDAK' ? 'selected' : ''}>Tepat, Tidak Tepat</option>
                                     </select>
                                 </div>
-                                <span class="text-xs text-muted font-medium">${q.options.length} / 5 Pernyataan</span>
+                                <div class="flex items-center gap-2">
+                                    ${isPartial ? '<span class="badge" style="background:#dcfce7; color:#15803d; font-size:0.72rem; padding: 2px 7px;"><i class="ph ph-sliders"></i> Bobot Poin Kustom</span>' : ''}
+                                    <span class="text-xs text-muted font-medium">${q.options.length} / 5 Pernyataan</span>
+                                </div>
                             </div>
                             <div style="overflow-x: auto;">
                                 <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem;">
@@ -430,6 +473,7 @@ Router.addRoute('/question-builder', async (params) => {
                                             <th style="padding: 8px 10px; width: 40px; text-align: center;">No</th>
                                             <th style="padding: 8px 10px; text-align: left;">Teks Pernyataan</th>
                                             <th style="padding: 8px 10px; width: 220px; text-align: center;">Kunci (${tfLabels.positive} / ${tfLabels.negative})</th>
+                                            ${isPartial ? '<th style="padding: 8px 10px; width: 100px; text-align: center;" title="Poin kustom untuk pernyataan ini jika dijawab sesuai kunci">Poin</th>' : ''}
                                             <th style="padding: 8px 10px; width: 50px; text-align: center;">Aksi</th>
                                         </tr>
                                     </thead>
@@ -459,6 +503,17 @@ Router.addRoute('/question-builder', async (params) => {
                                                             </label>
                                                         </div>
                                                     </td>
+                                                    ${isPartial ? `
+                                                        <td style="padding: 6px 10px; text-align: center; vertical-align: middle;">
+                                                            <input type="number" class="input-control" 
+                                                                   style="padding: 0.35rem 0.5rem; width: 75px; text-align: center; font-weight: bold; margin: 0 auto; color: #15803d; background: #f0fdf4; border-color: #86efac;" 
+                                                                   value="${(opt.score !== undefined && opt.score !== null && opt.score !== '') ? opt.score : ''}" 
+                                                                   placeholder="Auto" 
+                                                                   min="0" step="any"
+                                                                   oninput="updateStatementScore(${qIndex}, ${sIdx}, this.value)" 
+                                                                   title="Poin untuk pernyataan ini jika dijawab sesuai kunci. Kosongkan untuk bagi rata.">
+                                                        </td>
+                                                    ` : ''}
                                                     <td style="padding: 6px 10px; text-align: center; vertical-align: middle;">
                                                         <button type="button" class="btn btn-icon btn-secondary btn-sm text-error" onclick="removeStatement(${qIndex}, ${sIdx})" title="Hapus Pernyataan" ${q.options.length <= 1 ? 'disabled' : ''}>
                                                             <i class="ph ph-trash"></i>
@@ -470,29 +525,72 @@ Router.addRoute('/question-builder', async (params) => {
                                     </tbody>
                                 </table>
                             </div>
-                            <div style="padding: 0.5rem 0.85rem; background: var(--bg-base); border-top: 1px solid var(--border-color); display: flex; justify-content: flex-start;">
+                            <div style="padding: 0.5rem 0.85rem; background: var(--bg-base); border-top: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
                                 <button type="button" class="btn btn-outline-primary btn-sm" onclick="addStatement(${qIndex})" ${q.options.length >= 5 ? 'disabled' : ''} style="font-size: 0.78rem;">
                                     <i class="ph ph-plus"></i> Tambah Pernyataan ${q.options.length >= 5 ? '(Maksimal 5)' : `(${q.options.length}/5)`}
                                 </button>
+                                ${isPartial ? (() => {
+                                    let cSum = 0;
+                                    q.options.forEach(o => { if (o.score !== undefined && o.score !== null && o.score !== '') cSum += Number(o.score); });
+                                    return cSum > 0 ? `
+                                        <button type="button" class="btn btn-secondary btn-sm" onclick="syncQuestionScoreWithCustomPoints(${qIndex})" style="font-size: 0.75rem; padding: 3px 8px; color: #15803d; font-weight: 600;" title="Klik untuk menyamakan Skor Total Soal dengan jumlah total poin pernyataan">
+                                            <i class="ph ph-equals"></i> Total Poin: ${cSum} (Klik untuk Samakan Skor)
+                                        </button>
+                                    ` : '<span class="text-xs text-muted">Isi kolom Poin jika ingin bobot antar pernyataan tidak imbang</span>';
+                                })() : ''}
                             </div>
                         </div>
                     `;
                 } else if (q.type === 'MCQ_COMPLEX') {
                     const answerArr = Array.isArray(q.correctAnswer) ? q.correctAnswer : [];
-                    optionsHtml = q.options.map((opt, optIndex) => `
-                        <div class="option-builder-row">
-                            <div class="flex items-center gap-2" style="flex-grow: 1; min-width: 200px;">
-                                <input type="checkbox" ${answerArr.includes(opt.id) ? 'checked' : ''} onchange="toggleComplexAnswer(${qIndex}, '${opt.id}', this.checked)" style="width:1.25rem; height:1.25rem; cursor:pointer; flex-shrink: 0;" title="Centang jika merupakan kunci benar">
-                                <input type="text" class="input-control opt-text-input" style="padding:0.4rem; flex-grow: 1;" value="${escapeHtml(opt.text)}" oninput="updateOptionText(${qIndex}, ${optIndex}, this.value)" placeholder="Teks opsi ${opt.id}">
+                    const isPartial = q.scoringMethod === 'PARTIAL';
+                    optionsHtml = q.options.map((opt, optIndex) => {
+                        const isChecked = answerArr.includes(opt.id);
+                        return `
+                            <div class="option-builder-row">
+                                <div class="flex items-center gap-2" style="flex-grow: 1; min-width: 200px;">
+                                    <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleComplexAnswer(${qIndex}, '${opt.id}', this.checked)" style="width:1.25rem; height:1.25rem; cursor:pointer; flex-shrink: 0;" title="Centang jika merupakan kunci benar">
+                                    <input type="text" class="input-control opt-text-input" style="padding:0.4rem; flex-grow: 1;" value="${escapeHtml(opt.text)}" oninput="updateOptionText(${qIndex}, ${optIndex}, this.value)" placeholder="Teks opsi ${opt.id}">
+                                </div>
+                                ${isPartial ? `
+                                    <div class="flex items-center gap-1" style="flex-shrink: 0; background: ${isChecked ? 'rgba(34, 197, 94, 0.08)' : 'var(--bg-base)'}; padding: 3px 6px; border-radius: var(--radius-sm); border: 1px solid ${isChecked ? '#86efac' : 'var(--border-color)'};" title="Atur poin khusus untuk opsi ${opt.id}">
+                                        <span class="text-xs font-semibold ${isChecked ? 'text-success' : 'text-muted'}">Poin:</span>
+                                        <input type="number" class="input-control" 
+                                               style="padding: 0.25rem 0.4rem; width: 62px; text-align: center; font-weight: bold; color: ${isChecked ? '#15803d' : 'var(--text-secondary)'};" 
+                                               value="${(opt.score !== undefined && opt.score !== null && opt.score !== '') ? opt.score : ''}" 
+                                               placeholder="${isChecked ? 'Auto' : '0'}" 
+                                               min="0" step="any"
+                                               oninput="updateOptionScore(${qIndex}, ${optIndex}, this.value)">
+                                    </div>
+                                ` : ''}
+                                <div class="opt-extra">
+                                    <input type="text" class="input-control" style="padding:0.4rem; width: 130px;" value="${escapeHtml(opt.imageUrl || '')}" oninput="updateOptionImage(${qIndex}, ${optIndex}, this.value)" onpaste="handlePasteImage(event, 'option', ${qIndex}, ${optIndex})" placeholder="URL Gambar">
+                                    <button type="button" class="btn btn-icon btn-secondary btn-sm" onclick="triggerImageUpload('option', ${qIndex}, ${optIndex})" title="Upload Gambar Opsi"><i class="ph ph-upload-simple"></i></button>
+                                    <button type="button" class="btn btn-icon btn-outline-primary btn-sm" onclick="triggerClipboardPaste(${qIndex}, ${optIndex})" title="Paste Gambar Clipboard (Ctrl+V)"><i class="ph ph-clipboard-text"></i></button>
+                                    <button type="button" class="btn btn-icon btn-secondary text-error btn-sm" onclick="removeOption(${qIndex}, ${optIndex})" title="Hapus Opsi"><i class="ph ph-x"></i></button>
+                                </div>
                             </div>
-                            <div class="opt-extra">
-                                <input type="text" class="input-control" style="padding:0.4rem; width: 130px;" value="${escapeHtml(opt.imageUrl || '')}" oninput="updateOptionImage(${qIndex}, ${optIndex}, this.value)" onpaste="handlePasteImage(event, 'option', ${qIndex}, ${optIndex})" placeholder="URL Gambar">
-                                <button type="button" class="btn btn-icon btn-secondary btn-sm" onclick="triggerImageUpload('option', ${qIndex}, ${optIndex})" title="Upload Gambar Opsi"><i class="ph ph-upload-simple"></i></button>
-                                <button type="button" class="btn btn-icon btn-outline-primary btn-sm" onclick="triggerClipboardPaste(${qIndex}, ${optIndex})" title="Paste Gambar Clipboard (Ctrl+V)"><i class="ph ph-clipboard-text"></i></button>
-                                <button type="button" class="btn btn-icon btn-secondary text-error btn-sm" onclick="removeOption(${qIndex}, ${optIndex})" title="Hapus Opsi"><i class="ph ph-x"></i></button>
+                        `;
+                    }).join('');
+
+                    if (isPartial) {
+                        let customSum = 0;
+                        q.options.forEach(o => {
+                            if (answerArr.includes(o.id) && o.score !== undefined && o.score !== null && o.score !== '') {
+                                customSum += Number(o.score);
+                            }
+                        });
+                        optionsHtml += `
+                            <div class="p-2 mt-2 flex items-center justify-between text-xs" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-sm); color: #166534; flex-wrap: wrap; gap: 0.5rem;">
+                                <span><i class="ph ph-sliders"></i> <strong>Bobot Parsial Pilihan Ganda Kompleks:</strong> Anda dapat mengatur poin yang berbeda/tidak seimbang di tiap opsi jawaban (misal Opsi A = 2, Opsi C = 8). Kosongkan untuk bagi rata otomatis.</span>
+                                ${customSum > 0 ? `
+                                    <button type="button" class="btn btn-secondary btn-sm" onclick="syncQuestionScoreWithCustomPoints(${qIndex})" style="font-size: 0.72rem; padding: 2px 8px; flex-shrink: 0; color: #15803d; font-weight: 600;">
+                                        <i class="ph ph-equals"></i> Total Poin Kunci: ${customSum} (Samakan Skor Soal)
+                                    </button>
+                                ` : ''}
                             </div>
-                        </div>
-                    `).join('');
+                        `;
+                    }
                 }
 
                 return `
@@ -584,9 +682,9 @@ Router.addRoute('/question-builder', async (params) => {
 
                                 ${(q.type === 'MCQ_COMPLEX' || q.type === 'TRUE_FALSE') ? `
                                     <label class="input-label text-xs mt-2">Metode Penilaian</label>
-                                    <select class="input-control text-sm" onchange="updateQuestionField(${qIndex}, 'scoringMethod', this.value)">
+                                    <select class="input-control text-sm" onchange="updateQuestionField(${qIndex}, 'scoringMethod', this.value); renderQuestionsList();">
                                         <option value="EXACT" ${q.scoringMethod === 'EXACT' ? 'selected' : ''}>Exact (Semua Tepat)</option>
-                                        <option value="PARTIAL" ${q.scoringMethod === 'PARTIAL' ? 'selected' : ''}>Partial (Proporsional)</option>
+                                        <option value="PARTIAL" ${q.scoringMethod === 'PARTIAL' ? 'selected' : ''}>Partial (Proporsional / Bobot Kustom)</option>
                                     </select>
                                 ` : ''}
                             </div>
@@ -868,6 +966,14 @@ Router.addRoute('/question-builder', async (params) => {
                     ['durasi soal', 'durasi (detik)', 'durasi detik', 'waktu soal', 'waktu (detik)', 'durasi', 'duration'], 
                     ['durasi', 'waktu']
                 );
+                const colMethod = getCol(
+                    ['metode penilaian', 'metode', 'scoring method', 'scoringmethod'],
+                    ['metode', 'scoring']
+                );
+                const colOptionScores = getCol(
+                    ['poin per opsi', 'bobot opsi', 'poin opsi', 'skor opsi', 'option points', 'option scores'],
+                    ['poin per opsi', 'bobot opsi', 'poin opsi']
+                );
 
                 // Safety guard: colText and colType must NEVER be the same column
                 if (colText === colType || colText === -1) {
@@ -930,6 +1036,13 @@ Router.addRoute('/question-builder', async (params) => {
                     const explanation = getVal(colExp, hasExplicitImgCol ? 11 : 10);
                     const rawDuration = colDuration !== -1 ? Number(getVal(colDuration, -1)) : null;
                     const durationSeconds = (rawDuration && !isNaN(rawDuration) && rawDuration > 0) ? rawDuration : null;
+                    const rawMethod = colMethod !== -1 ? getVal(colMethod, -1).toUpperCase() : '';
+                    const isPartialMethod = rawMethod.includes('PARTIAL') || rawMethod.includes('PROPORSIONAL');
+                    const rawOptionScores = colOptionScores !== -1 ? getVal(colOptionScores, -1) : '';
+                    const parsedScoresArr = rawOptionScores ? rawOptionScores.split(/[,; ]+/).filter(Boolean).map(s => {
+                        const n = Number(s.trim());
+                        return isNaN(n) ? null : n;
+                    }) : [];
 
                     let options = [];
                     let correctAnswer = null;
@@ -942,13 +1055,17 @@ Router.addRoute('/question-builder', async (params) => {
                         if (rawOptions.length === 2 && 
                             (rawOptions[0].trim().toLowerCase() === 'benar' || rawOptions[0].trim().toLowerCase() === 'sesuai' || rawOptions[0].trim().toLowerCase() === 'tepat') && 
                             (rawOptions[1].trim().toLowerCase() === 'salah' || rawOptions[1].trim().toLowerCase() === 'tidak sesuai' || rawOptions[1].trim().toLowerCase() === 'tidak tepat')) {
-                            statements.push({ id: '1', text: questionText });
+                            statements.push({ id: '1', text: questionText, score: parsedScoresArr[0] !== undefined ? parsedScoresArr[0] : null });
                         } else if (rawOptions.length > 0) {
                             rawOptions.slice(0, 5).forEach((st, sIdx) => {
-                                statements.push({ id: String(sIdx + 1), text: String(st).trim() });
+                                statements.push({ 
+                                    id: String(sIdx + 1), 
+                                    text: String(st).trim(),
+                                    score: parsedScoresArr[sIdx] !== undefined ? parsedScoresArr[sIdx] : null
+                                });
                             });
                         } else {
-                            statements.push({ id: '1', text: 'Pernyataan 1' });
+                            statements.push({ id: '1', text: 'Pernyataan 1', score: parsedScoresArr[0] !== undefined ? parsedScoresArr[0] : null });
                         }
                         options = statements;
 
@@ -987,11 +1104,11 @@ Router.addRoute('/question-builder', async (params) => {
                         });
                         correctAnswer = keyMap;
                     } else if (type === 'MCQ_COMPLEX') {
-                        if (optA) options.push({ id: 'A', text: optA, imageUrl: '' });
-                        if (optB) options.push({ id: 'B', text: optB, imageUrl: '' });
-                        if (optC) options.push({ id: 'C', text: optC, imageUrl: '' });
-                        if (optD) options.push({ id: 'D', text: optD, imageUrl: '' });
-                        if (optE) options.push({ id: 'E', text: optE, imageUrl: '' });
+                        if (optA) options.push({ id: 'A', text: optA, imageUrl: '', score: parsedScoresArr[0] !== undefined ? parsedScoresArr[0] : null });
+                        if (optB) options.push({ id: 'B', text: optB, imageUrl: '', score: parsedScoresArr[1] !== undefined ? parsedScoresArr[1] : null });
+                        if (optC) options.push({ id: 'C', text: optC, imageUrl: '', score: parsedScoresArr[2] !== undefined ? parsedScoresArr[2] : null });
+                        if (optD) options.push({ id: 'D', text: optD, imageUrl: '', score: parsedScoresArr[3] !== undefined ? parsedScoresArr[3] : null });
+                        if (optE) options.push({ id: 'E', text: optE, imageUrl: '', score: parsedScoresArr[4] !== undefined ? parsedScoresArr[4] : null });
                         correctAnswer = rawKey.toUpperCase().split(/[,; ]+/).filter(Boolean);
                     } else {
                         if (optA) options.push({ id: 'A', text: optA, imageUrl: '' });
@@ -1001,6 +1118,10 @@ Router.addRoute('/question-builder', async (params) => {
                         if (optE) options.push({ id: 'E', text: optE, imageUrl: '' });
                         correctAnswer = rawKey.toUpperCase().charAt(0) || 'A';
                     }
+
+                    const finalScoringMethod = (type === 'MCQ_COMPLEX' || type === 'TRUE_FALSE')
+                        ? (isPartialMethod || parsedScoresArr.length > 0 ? 'PARTIAL' : 'EXACT')
+                        : 'EXACT';
 
                     parsed.push({
                         id: 'Q_' + Math.floor(Math.random() * 90000 + 10000),
@@ -1013,7 +1134,7 @@ Router.addRoute('/question-builder', async (params) => {
                         durationSeconds: durationSeconds,
                         options: options,
                         correctAnswer: correctAnswer,
-                        scoringMethod: 'EXACT',
+                        scoringMethod: finalScoringMethod,
                         explanation: explanation
                     });
                 });

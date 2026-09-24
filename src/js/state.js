@@ -202,7 +202,7 @@ function downloadQuestionsAsExcel(questionsList, examTitle) {
         const headers = [
             "Nomor Urut", "Tipe Soal", "Teks Soal", "Teks Bawah Gambar", "URL Gambar Soal",
             "Opsi A / Pernyataan 1", "Opsi B / Pernyataan 2", "Opsi C / Pernyataan 3", "Opsi D / Pernyataan 4", "Opsi E / Pernyataan 5",
-            "Kunci Jawaban", "Bobot Poin", "Pembahasan", "Durasi Soal (Detik)"
+            "Kunci Jawaban", "Bobot Poin", "Pembahasan", "Durasi Soal (Detik)", "Metode Penilaian", "Poin Per Opsi"
         ];
 
         const rows = [headers];
@@ -262,6 +262,11 @@ function downloadQuestionsAsExcel(questionsList, examTitle) {
                 keyStr = String(q.correctAnswer || 'A');
             }
 
+            let optionScoresStr = '';
+            if (opts.length > 0 && opts.some(o => o.score !== undefined && o.score !== null && o.score !== '')) {
+                optionScoresStr = opts.map(o => (o.score !== undefined && o.score !== null) ? o.score : '').join(',');
+            }
+
             rows.push([
                 no,
                 tipeStr,
@@ -276,7 +281,9 @@ function downloadQuestionsAsExcel(questionsList, examTitle) {
                 keyStr,
                 Number(q.score || 10),
                 q.explanation || '',
-                q.durationSeconds || ''
+                q.durationSeconds || '',
+                q.scoringMethod || 'EXACT',
+                optionScoresStr
             ]);
         });
 

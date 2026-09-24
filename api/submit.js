@@ -52,16 +52,33 @@ function calculateQuestionScore(q, studentAns) {
             const keyIds = qOptions ? qOptions.map(o => String(o.id)) : Object.keys(key);
             const totalItems = keyIds.length > 0 ? keyIds.length : 1;
 
+            let hasCustomWeights = false;
+            if (qOptions) {
+                hasCustomWeights = qOptions.some(o => o.score !== undefined && o.score !== null && o.score !== '' && Number(o.score) > 0);
+            }
+
+            let awardedWeight = 0;
+            let totalWeight = 0;
+
             keyIds.forEach(kId => {
+                const optObj = qOptions ? qOptions.find(o => String(o.id) === String(kId)) : null;
+                const itemWeight = (hasCustomWeights && optObj && optObj.score !== undefined && optObj.score !== null && optObj.score !== '')
+                    ? Number(optObj.score)
+                    : (hasCustomWeights ? 0 : 1);
+
+                totalWeight += itemWeight;
+
                 const normAns = normalizeTFBool(sMap[kId]);
                 const normKey = normalizeTFBool(key[kId]);
                 if (normAns && normKey && normAns === normKey) {
                     correctCount++;
+                    awardedWeight += itemWeight;
                 }
             });
 
             if (method === 'PARTIAL') {
-                const ratio = correctCount / totalItems;
+                const effectiveTotal = totalWeight > 0 ? totalWeight : totalItems;
+                const ratio = awardedWeight / effectiveTotal;
                 const awarded = Math.round(ratio * maxScore * 100) / 100;
                 return {
                     isCorrect: correctCount === totalItems,
@@ -85,17 +102,37 @@ function calculateQuestionScore(q, studentAns) {
             let correctCount = 0;
             const totalItems = keyArr.length;
 
+            const qOptions = Array.isArray(q.options) && q.options.length > 0 ? q.options : null;
+            let hasCustomWeights = false;
+            if (qOptions) {
+                hasCustomWeights = qOptions.some(o => o.score !== undefined && o.score !== null && o.score !== '' && Number(o.score) > 0);
+            }
+
+            let awardedWeight = 0;
+            let totalWeight = 0;
+
             for (let i = 0; i < totalItems; i++) {
+                const optObj = (qOptions && qOptions[i]) ? qOptions[i] : null;
+                const itemWeight = (hasCustomWeights && optObj && optObj.score !== undefined && optObj.score !== null && optObj.score !== '')
+                    ? Number(optObj.score)
+                    : (hasCustomWeights ? 0 : 1);
+                totalWeight += itemWeight;
+
                 const normAns = normalizeTFBool(ansArr[i]);
                 const normKey = normalizeTFBool(keyArr[i]);
-                if (normAns && normKey && normAns === normKey) correctCount++;
+                if (normAns && normKey && normAns === normKey) {
+                    correctCount++;
+                    awardedWeight += itemWeight;
+                }
             }
 
             if (method === 'PARTIAL') {
-                const awarded = totalItems > 0 ? (correctCount / totalItems) * maxScore : 0;
+                const effectiveTotal = totalWeight > 0 ? totalWeight : totalItems;
+                const ratio = effectiveTotal > 0 ? (awardedWeight / effectiveTotal) : 0;
+                const awarded = Math.round(ratio * maxScore * 100) / 100;
                 return {
                     isCorrect: correctCount === totalItems,
-                    score: Math.round(awarded * 100) / 100,
+                    score: awarded,
                     maxScore
                 };
             } else {
@@ -130,6 +167,12 @@ function calculateQuestionScore(q, studentAns) {
         const studentSet = new Set(studentList.map(x => String(x).trim().toUpperCase()));
         const keySet = new Set(keyList.map(x => String(x).trim().toUpperCase()));
 
+        const qOptions = Array.isArray(q.options) && q.options.length > 0 ? q.options : null;
+        let hasCustomWeights = false;
+        if (qOptions) {
+            hasCustomWeights = qOptions.some(o => o.score !== undefined && o.score !== null && o.score !== '' && Number(o.score) > 0);
+        }
+
         let truePositives = 0;
         let falsePositives = 0;
 
@@ -138,21 +181,64 @@ function calculateQuestionScore(q, studentAns) {
             else falsePositives++;
         });
 
-        const targetCount = keySet.size || 1;
+        const isExactMatch = truePositives === keySet.size && falsePositives === 0;
+
         if (method === 'PARTIAL') {
-            const raw = (truePositives - falsePositives) / targetCount;
-            const ratio = Math.max(0, Math.min(1, raw));
-            const awarded = Math.round(ratio * maxScore * 100) / 100;
-            return {
-                isCorrect: truePositives === keySet.size && falsePositives === 0,
-                score: awarded,
-                maxScore
-            };
+            if (hasCustomWeights) {
+                // Custom unbalanced weighting per option
+                let earnedWeight = 0;
+                let totalCorrectWeight = 0;
+                let totalPenaltyWeight = 0;
+
+                keySet.forEach(k => {
+                    const optObj = qOptions ? qOptions.find(o => String(o.id).toUpperCase() === k) : null;
+                    const w = (optObj && optObj.score !== undefined && optObj.score !== null && optObj.score !== '')
+                        ? Number(optObj.score)
+                        : 0;
+                    totalCorrectWeight += w;
+                    if (studentSet.has(k)) {
+                        earnedWeight += w;
+                    }
+                });
+
+                const targetWeight = totalCorrectWeight > 0 ? totalCorrectWeight : (keySet.size || 1);
+                const avgPenalty = totalCorrectWeight > 0 ? (totalCorrectWeight / Math.max(1, keySet.size)) : 1;
+
+                studentSet.forEach(ans => {
+                    if (!keySet.has(ans)) {
+                        const optObj = qOptions ? qOptions.find(o => String(o.id).toUpperCase() === ans) : null;
+                        const penalty = (optObj && optObj.score !== undefined && optObj.score !== null && optObj.score !== '' && Number(optObj.score) > 0)
+                            ? Number(optObj.score)
+                            : avgPenalty;
+                        totalPenaltyWeight += penalty;
+                    }
+                });
+
+                const netWeight = earnedWeight - totalPenaltyWeight;
+                const ratio = Math.max(0, Math.min(1, netWeight / targetWeight));
+                const awarded = Math.round(ratio * maxScore * 100) / 100;
+
+                return {
+                    isCorrect: isExactMatch,
+                    score: awarded,
+                    maxScore
+                };
+            } else {
+                // Standard unweighted partial scoring from PRD
+                const targetCount = keySet.size || 1;
+                const raw = (truePositives - falsePositives) / targetCount;
+                const ratio = Math.max(0, Math.min(1, raw));
+                const awarded = Math.round(ratio * maxScore * 100) / 100;
+                return {
+                    isCorrect: isExactMatch,
+                    score: awarded,
+                    maxScore
+                };
+            }
         } else {
-            const isMatch = truePositives === keySet.size && falsePositives === 0;
             return {
-                isCorrect: isMatch,
-                score: isMatch ? maxScore : 0,
+                isCorrect: isExactMatch,
+                score: isExactMatch ? maxScore : 0,
                 maxScore
             };
         }

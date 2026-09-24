@@ -306,10 +306,10 @@ window.showStudentDetail = async function(attemptId) {
                             <span class="badge text-xs" style="background: var(--bg-base);">${typeLabel}</span>
                         </div>
                         <div class="flex items-center gap-2">
-                            <span class="badge ${isCorr ? 'badge-active' : 'badge-archived'} text-xs">
-                                ${isCorr ? '<i class="ph ph-check-circle"></i> BENAR' : '<i class="ph ph-x-circle"></i> SALAH'}
+                            <span class="badge ${isCorr ? 'badge-active' : (q.awardedScore > 0 ? 'badge-warning' : 'badge-archived')}" style="${!isCorr && q.awardedScore > 0 ? 'background: rgba(245, 158, 11, 0.15); color: #d97706;' : ''} font-size: 0.75rem; padding: 2px 8px;">
+                                ${isCorr ? '<i class="ph ph-check-circle"></i> BENAR' : (q.awardedScore > 0 ? '<i class="ph ph-hourglass-medium"></i> SEBAGIAN' : '<i class="ph ph-x-circle"></i> SALAH')}
                             </span>
-                            <span class="text-xs font-bold ${isCorr ? 'text-success' : 'text-error'}">
+                            <span class="text-xs font-bold ${isCorr ? 'text-success' : (q.awardedScore > 0 ? 'text-warning' : 'text-error')}" style="${!isCorr && q.awardedScore > 0 ? 'color: #d97706;' : ''}">
                                 ${q.awardedScore} / ${q.score} Poin
                             </span>
                         </div>
@@ -360,6 +360,8 @@ window.showStudentDetail = async function(attemptId) {
                             statements = [{ id: '1', text: q.questionText }];
                         }
 
+                        const hasCustomPoints = statements.some(st => st.score !== undefined && st.score !== null && st.score !== '');
+
                         return `
                             <div style="overflow-x: auto; margin-top: 0.5rem; margin-bottom: 0.75rem; border: 1px solid var(--border-color); border-radius: var(--radius-md); background: #ffffff;">
                                 <table style="width: 100%; border-collapse: collapse; font-size: 0.84rem; text-align: left;">
@@ -369,6 +371,7 @@ window.showStudentDetail = async function(attemptId) {
                                             <th style="padding: 8px 12px;">Pernyataan</th>
                                             <th style="padding: 8px 12px; width: 110px; text-align: center;">Jawaban Siswa</th>
                                             <th style="padding: 8px 12px; width: 100px; text-align: center;">Kunci Resmi</th>
+                                            ${(q.scoringMethod === 'PARTIAL' || hasCustomPoints) ? '<th style="padding: 8px 12px; width: 75px; text-align: center;">Poin</th>' : ''}
                                             <th style="padding: 8px 12px; width: 85px; text-align: center;">Status</th>
                                         </tr>
                                     </thead>
@@ -391,6 +394,11 @@ window.showStudentDetail = async function(attemptId) {
                                                     <td style="padding: 8px 12px; vertical-align: middle; line-height: 1.45; color: var(--text-primary); font-weight: 500;">${escapeHtml(st.text)}</td>
                                                     <td style="padding: 8px 12px; text-align: center; vertical-align: middle;">${sText}</td>
                                                     <td style="padding: 8px 12px; text-align: center; vertical-align: middle;">${cText}</td>
+                                                    ${(q.scoringMethod === 'PARTIAL' || hasCustomPoints) ? `
+                                                        <td style="padding: 8px 12px; text-align: center; vertical-align: middle; font-weight: 700; color: ${isStmtCorrect ? '#15803d' : 'var(--text-muted)'};">
+                                                            ${(st.score !== undefined && st.score !== null && st.score !== '') ? `${st.score}` : '<span class="text-muted font-normal text-xs">Auto</span>'}
+                                                        </td>
+                                                    ` : ''}
                                                     <td style="padding: 8px 12px; text-align: center; vertical-align: middle;">
                                                         <span class="badge ${isStmtCorrect ? 'badge-active' : 'badge-archived'}" style="font-size: 0.72rem; padding: 2px 6px;">
                                                             ${isStmtCorrect ? '<i class="ph ph-check"></i> Tepat' : '<i class="ph ph-x"></i> Keliru'}

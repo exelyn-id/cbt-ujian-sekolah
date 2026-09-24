@@ -1803,10 +1803,23 @@ function submitExamAttempt(attemptId, finalAnswersMap) {
             } catch (e) {}
             var totalStmts = qOptions.length > 0 ? qOptions.length : Object.keys(cMap).length;
             var correctCount = 0;
+            var awardedWeight = 0;
+            var totalWeight = 0;
+            var hasCustomWeights = false;
+
+            for (var ci = 0; ci < qOptions.length; ci++) {
+              var csc = qOptions[ci].score;
+              if (csc !== undefined && csc !== null && csc !== "" && Number(csc) > 0) {
+                hasCustomWeights = true;
+                break;
+              }
+            }
 
             if (qOptions.length > 0) {
               for (var oi = 0; oi < qOptions.length; oi++) {
                 var sId = String(qOptions[oi].id);
+                var itemW = (hasCustomWeights && qOptions[oi].score !== undefined && qOptions[oi].score !== null && qOptions[oi].score !== "") ? Number(qOptions[oi].score) : (hasCustomWeights ? 0 : 1);
+                totalWeight += itemW;
                 var sVal = sMap ? String(sMap[sId] || "").trim().toUpperCase() : "";
                 var cVal = cMap ? String(cMap[sId] || "").trim().toUpperCase() : "";
                 if (sVal === "BENAR" || sVal === "B" || sVal === "SESUAI" || sVal === "TEPAT" || sVal === "1" || sVal === "TRUE") sVal = "TRUE";
@@ -1815,10 +1828,12 @@ function submitExamAttempt(attemptId, finalAnswersMap) {
                 if (cVal === "SALAH" || cVal === "S" || cVal === "TIDAK SESUAI" || cVal === "TS" || cVal === "TIDAK TEPAT" || cVal === "TT" || cVal === "0" || cVal === "FALSE") cVal = "FALSE";
                 if (sVal && cVal && sVal === cVal) {
                   correctCount++;
+                  awardedWeight += itemW;
                 }
               }
             } else {
               for (var kId in cMap) {
+                totalWeight += 1;
                 var sV = sMap ? String(sMap[kId] || "").trim().toUpperCase() : "";
                 var cV = String(cMap[kId] || "").trim().toUpperCase();
                 if (sV === "BENAR" || sV === "B" || sV === "SESUAI" || sV === "TEPAT" || sV === "1" || sV === "TRUE") sV = "TRUE";
@@ -1827,12 +1842,14 @@ function submitExamAttempt(attemptId, finalAnswersMap) {
                 if (cV === "SALAH" || cV === "S" || cV === "TIDAK SESUAI" || cV === "TS" || cV === "TIDAK TEPAT" || cV === "TT" || cV === "0" || cV === "FALSE") cV = "FALSE";
                 if (sV && cV && sV === cV) {
                   correctCount++;
+                  awardedWeight += 1;
                 }
               }
             }
 
             if (question.scoringMethod === "PARTIAL") {
-              var ratio = totalStmts > 0 ? (correctCount / totalStmts) : 0;
+              var effTotal = totalWeight > 0 ? totalWeight : totalStmts;
+              var ratio = effTotal > 0 ? (awardedWeight / effTotal) : 0;
               qScore = Math.round(maxScore * ratio * 100) / 100;
               if (correctCount === totalStmts && totalStmts > 0) isQCorrect = true;
             } else {
@@ -1867,24 +1884,109 @@ function submitExamAttempt(attemptId, finalAnswersMap) {
 
           var studentList = Array.isArray(studentAns) ? studentAns : [studentAns];
 
-          if (question.scoringMethod === "PARTIAL") {
-            // Partial scoring algorithm from PRD
-            var correctSelected = 0;
-            for (var s = 0; s < studentList.length; s++) {
-              if (correctList.indexOf(studentList[s]) !== -1) {
-                correctSelected++;
+          var normCorrectList = [];
+          for (var cli = 0; cli < correctList.length; cli++) {
+            normCorrectList.push(String(correctList[cli]).trim().toUpperCase());
+          }
+          var normStudentList = [];
+          for (var sli = 0; sli < studentList.length; sli++) {
+            var sVal = String(studentList[sli]).trim().toUpperCase();
+            if (normStudentList.indexOf(sVal) === -1) {
+              normStudentList.push(sVal);
+            }
+          }
+
+          var isExactMatch = normStudentList.length === normCorrectList.length;
+          if (isExactMatch) {
+            for (var mi = 0; mi < normStudentList.length; mi++) {
+              if (normCorrectList.indexOf(normStudentList[mi]) === -1) {
+                isExactMatch = false;
+                break;
               }
             }
-            var wrongSelected = studentList.length - correctSelected;
-            var totalTarget = correctList.length > 0 ? correctList.length : 1;
-            var ratio = (correctSelected - wrongSelected) / totalTarget;
-            ratio = Math.max(0, Math.min(1, ratio));
+          }
 
-            qScore = Math.round(maxScore * ratio * 100) / 100;
-            if (qScore === maxScore) isQCorrect = true;
+          if (question.scoringMethod === "PARTIAL") {
+            var qOptions = [];
+            try {
+              qOptions = JSON.parse(question.optionsJson || "[]");
+            } catch (e) {}
+
+            var hasCustomWeights = false;
+            for (var oci = 0; oci < qOptions.length; oci++) {
+              var sc = qOptions[oci].score;
+              if (sc !== undefined && sc !== null && sc !== "" && Number(sc) > 0) {
+                hasCustomWeights = true;
+                break;
+              }
+            }
+
+            if (hasCustomWeights) {
+              var earnedWeight = 0;
+              var totalCorrectWeight = 0;
+              var totalPenaltyWeight = 0;
+
+              for (var cki = 0; cki < normCorrectList.length; cki++) {
+                var kId = normCorrectList[cki];
+                var optObj = null;
+                for (var ooi = 0; ooi < qOptions.length; ooi++) {
+                  if (String(qOptions[ooi].id).toUpperCase() === kId) {
+                    optObj = qOptions[ooi];
+                    break;
+                  }
+                }
+                var w = (optObj && optObj.score !== undefined && optObj.score !== null && optObj.score !== "")
+                  ? Number(optObj.score)
+                  : 0;
+                totalCorrectWeight += w;
+                if (normStudentList.indexOf(kId) !== -1) {
+                  earnedWeight += w;
+                }
+              }
+
+              var targetWeight = totalCorrectWeight > 0 ? totalCorrectWeight : (normCorrectList.length || 1);
+              var avgPenalty = totalCorrectWeight > 0 ? (totalCorrectWeight / Math.max(1, normCorrectList.length)) : 1;
+
+              for (var sti = 0; sti < normStudentList.length; sti++) {
+                var sAns = normStudentList[sti];
+                if (normCorrectList.indexOf(sAns) === -1) {
+                  var pOpt = null;
+                  for (var poi = 0; poi < qOptions.length; poi++) {
+                    if (String(qOptions[poi].id).toUpperCase() === sAns) {
+                      pOpt = qOptions[poi];
+                      break;
+                    }
+                  }
+                  var pen = (pOpt && pOpt.score !== undefined && pOpt.score !== null && pOpt.score !== "" && Number(pOpt.score) > 0)
+                    ? Number(pOpt.score)
+                    : avgPenalty;
+                  totalPenaltyWeight += pen;
+                }
+              }
+
+              var netWeight = earnedWeight - totalPenaltyWeight;
+              var ratio = Math.max(0, Math.min(1, netWeight / targetWeight));
+              qScore = Math.round(maxScore * ratio * 100) / 100;
+              if (isExactMatch) isQCorrect = true;
+            } else {
+              // Standard unweighted partial scoring from PRD
+              var correctSelected = 0;
+              for (var s = 0; s < normStudentList.length; s++) {
+                if (normCorrectList.indexOf(normStudentList[s]) !== -1) {
+                  correctSelected++;
+                }
+              }
+              var wrongSelected = normStudentList.length - correctSelected;
+              var totalTarget = normCorrectList.length > 0 ? normCorrectList.length : 1;
+              var ratio = (correctSelected - wrongSelected) / totalTarget;
+              ratio = Math.max(0, Math.min(1, ratio));
+
+              qScore = Math.round(maxScore * ratio * 100) / 100;
+              if (isExactMatch) isQCorrect = true;
+            }
           } else {
             // EXACT set matching
-            if (_arraysEqual(studentList, correctList)) {
+            if (isExactMatch) {
               qScore = maxScore;
               isQCorrect = true;
             }
