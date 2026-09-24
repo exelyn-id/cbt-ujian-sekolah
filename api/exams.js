@@ -1,11 +1,9 @@
 // ============================================================================
-// API Endpoint: /api/exams (Public Exams & Exam Questions for Students)
+// API Endpoint: /api/exams (Public Exams & Student Taking Gateway - 100% Vercel DB)
 // ============================================================================
-const { kv } = require('./_redis');
-const { callGoogleAppsScript } = require('./_sheets');
+const db = require('./_db');
 
 module.exports = async function handler(req, res) {
-    // Enable CORS
     res.setHeader('Access-Control-Allow-Origin', '*');
     res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
@@ -15,111 +13,90 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-        // --------------------------------------------------------------------
-        // 1. GET: Fetch Active Exams or Single Exam Details
-        // --------------------------------------------------------------------
         if (req.method === 'GET') {
             const { id } = req.query;
 
-            // Scenario A: Get single exam with questions for taking test
+            // Scenario A: Get single exam with sanitized questions for taking test
             if (id) {
-                // Try to get from Redis cache
-                let fullExam = await kv.get(`exam:full:${id}`);
-
-                // If not in Redis, fetch from Google Apps Script and cache
-                if (!fullExam) {
-                    const gasRes = await callGoogleAppsScript('get_exam_with_questions', { examId: id });
-                    if (gasRes && gasRes.success && gasRes.data) {
-                        fullExam = gasRes.data;
-                        await kv.set(`exam:full:${id}`, fullExam, { ex: 86400 }); // cache 24h
-                    }
-                }
-
-                if (!fullExam) {
+                const exam = await db.getPublicExam(id);
+                if (!exam) {
                     return res.status(404).json({
                         success: false,
                         message: 'Ujian tidak ditemukan atau link sudah kadaluarsa.'
                     });
                 }
 
-                // SECURITY: Strip out correctAnswer before sending to student browser!
-                const sanitizedQuestions = (fullExam.questions || []).map(q => {
-                    const { correctAnswer, ...safeQuestion } = q;
-                    return safeQuestion;
-                });
-
-                const studentExam = {
-                    ...fullExam,
-                    questions: sanitizedQuestions
-                };
-
                 return res.status(200).json({
                     success: true,
-                    data: studentExam
+                    data: exam
                 });
             }
 
-            // Scenario B: Get list of active public exams for student dashboard
-            let activeExams = await kv.get('exams:active_list');
-
-            if (!activeExams || !Array.isArray(activeExams) || activeExams.length === 0) {
-                // Fetch from Google Apps Script
-                const gasRes = await callGoogleAppsScript('get_active_public_exams');
-                if (gasRes && gasRes.success && Array.isArray(gasRes.data)) {
-                    activeExams = gasRes.data;
-                    await kv.set('exams:active_list', activeExams, { ex: 300 }); // cache 5 mins
-                } else {
-                    activeExams = [];
-                }
-            }
-
+            // Scenario B: Get list of active public exams for student portal
+            const activeList = await db.getActivePublicExams();
             return res.status(200).json({
                 success: true,
-                data: activeExams
+                data: activeList
             });
         }
 
-        // --------------------------------------------------------------------
-        // 2. POST: Publish / Cache Exam from Teacher Dashboard or Sync Worker
-        // --------------------------------------------------------------------
         if (req.method === 'POST') {
-            const body = req.body || {};
-            const { action, exam, questions } = body;
+            const { action, examId, participantData } = req.body || {};
 
-            if (action === 'publish' && exam && exam.examId) {
-                const fullPayload = {
-                    ...exam,
-                    questions: questions || []
-                };
-
-                // Store in Redis with answer keys preserved for server-side grading
-                await kv.set(`exam:full:${exam.examId}`, fullPayload, { ex: 86400 * 7 }); // 7 days
-
-                // Update active list
-                let activeList = await kv.get('exams:active_list') || [];
-                activeList = activeList.filter(e => e.examId !== exam.examId);
-                if (exam.status === 'ACTIVE' && exam.showInPortal !== false) {
-                    activeList.unshift({
-                        examId: exam.examId,
-                        title: exam.title,
-                        subject: exam.subject,
-                        material: exam.material,
-                        className: exam.className,
-                        durationMinutes: exam.durationMinutes,
-                        kkm: exam.kkm,
-                        status: exam.status,
-                        teacherName: exam.teacherName || ''
+            if (action === 'start_attempt' || examId) {
+                const targetExamId = examId || (req.body && req.body.examId);
+                const exam = await db.getPublicExam(targetExamId);
+                if (!exam) {
+                    return res.status(404).json({
+                        success: false,
+                        message: 'Ujian tidak ditemukan atau link sudah kadaluarsa.'
                     });
                 }
-                await kv.set('exams:active_list', activeList, { ex: 86400 });
+
+                const attemptId = 'ATT_' + Date.now().toString(36).toUpperCase() + '_' + Math.floor(Math.random() * 9000 + 1000);
+                const deadlineAt = Date.now() + (Number(exam.durationMinutes || 60) * 60 * 1000);
+                const nowIso = new Date().toISOString();
+
+                // Persist initial IN_PROGRESS attempt record in Redis
+                const p = participantData || (req.body && req.body.participant) || {};
+                const initialRecord = {
+                    attemptId,
+                    examId: targetExamId,
+                    participantName: p.name || p.participantName || 'Siswa',
+                    className: p.className || 'Umum',
+                    nis: p.nis || '',
+                    attemptNumber: 1,
+                    startedAt: nowIso,
+                    status: 'IN_PROGRESS',
+                    score: null,
+                    kkm: exam.kkm || 75
+                };
+                const { kv } = require('./_redis');
+                await kv.set(`attempt:record:${attemptId}`, initialRecord, { ex: 86400 * 30 });
+
+                // Index attemptId in exam:attempts:${examId}
+                try {
+                    const examAttemptsKey = `exam:attempts:${targetExamId}`;
+                    const currentList = (await kv.lrange(examAttemptsKey, 0, -1)) || [];
+                    if (!currentList.includes(attemptId)) {
+                        await kv.rpush(examAttemptsKey, attemptId);
+                    }
+                } catch (indexErr) {
+                    console.error('Failed to index attempt in Redis:', indexErr);
+                }
 
                 return res.status(200).json({
                     success: true,
-                    message: `Ujian ${exam.examId} berhasil dipublikasikan ke cache Vercel.`
+                    data: {
+                        attemptId: attemptId,
+                        deadlineAt: deadlineAt,
+                        participantName: p.name || p.participantName || 'Siswa',
+                        className: p.className || 'Umum',
+                        nis: p.nis || '',
+                        questions: exam.questions || []
+                    }
                 });
             }
-
-            return res.status(400).json({ success: false, message: 'Aksi POST tidak valid.' });
         }
 
         return res.status(405).json({ success: false, message: 'Method Not Allowed' });

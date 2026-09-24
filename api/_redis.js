@@ -50,6 +50,18 @@ const kv = {
         return 1;
     },
 
+    async keys(pattern = '*') {
+        if (redis) {
+            try { return await redis.keys(pattern); } catch (e) { console.error('Redis keys error:', e); }
+        }
+        const reg = new RegExp('^' + pattern.replace(/\*/g, '.*') + '$');
+        const matched = [];
+        for (const k of memoryStore.keys()) {
+            if (reg.test(k)) matched.push(k);
+        }
+        return matched;
+    },
+
     async rpush(key, ...values) {
         if (redis) {
             try { return await redis.rpush(key, ...values); } catch (e) { console.error('Redis rpush error:', e); }

@@ -218,9 +218,14 @@ Router.addRoute('/dashboard', async () => {
                                 </div>
                             </div>
                         </div>
-                        <button class="btn btn-outline-primary btn-sm flex items-center gap-1.5" onclick="copyStudentPortalLink()" style="background: #ffffff;">
-                            <i class="ph ph-share-network"></i> Link Portal Siswa
-                        </button>
+                        <div class="flex items-center gap-2">
+                            <button class="btn btn-outline-primary btn-sm flex items-center gap-1.5" onclick="openUserManagementModal()" style="background: #ffffff;">
+                                <i class="ph ph-users-three"></i> Kelola Pengguna (Guru/Admin)
+                            </button>
+                            <button class="btn btn-outline-primary btn-sm flex items-center gap-1.5" onclick="copyStudentPortalLink()" style="background: #ffffff;">
+                                <i class="ph ph-share-network"></i> Link Portal Siswa
+                            </button>
+                        </div>
                     </div>
                 ` : ''}
                 <!-- Stats -->
@@ -259,6 +264,11 @@ Router.addRoute('/dashboard', async () => {
                     <div class="flex justify-between items-center mb-4 flex-wrap gap-2">
                         <h3 style="margin:0;">Daftar Ujian Terbaru</h3>
                         <div class="flex items-center gap-2">
+                            ${isAdmin ? `
+                                <button class="btn btn-outline-primary btn-sm flex items-center gap-1.5" onclick="openUserManagementModal()" title="Kelola Akun Guru & Administrator">
+                                    <i class="ph ph-users-three"></i> Kelola Pengguna
+                                </button>
+                            ` : ''}
                             <button class="btn btn-outline-primary btn-sm flex items-center gap-1.5" onclick="copyStudentPortalLink()" title="Bagikan Link Portal Siswa ke Seluruh Siswa">
                                 <i class="ph ph-share-network"></i> Link Portal Siswa
                             </button>
@@ -282,9 +292,14 @@ window.handleLogout = async function() {
 };
 
 window.copyExamLink = function(examId) {
-    let baseUrl = (typeof window !== 'undefined' && (window.__WEB_APP_URL__ || window.WEB_APP_URL)) || '';
-    if (!baseUrl || baseUrl.indexOf('googleusercontent.com') !== -1) {
-        baseUrl = ['https:', '', 'script.' + 'google.com', 'macros', 's', 'AKfycbwD5Ezfr1xclvOw4Q6h6vIxwSTY9Sjq75424i4ex7LbGcAG5QdP27-9KBJeuqARXdQo1w', 'exec'].join('/');
+    let baseUrl = '';
+    if (typeof window !== 'undefined' && window.location.hostname && (window.location.hostname.includes('vercel.app') || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+        baseUrl = window.location.origin + window.location.pathname;
+    } else {
+        baseUrl = (typeof window !== 'undefined' && (window.__WEB_APP_URL__ || window.WEB_APP_URL)) || '';
+        if (!baseUrl || baseUrl.indexOf('googleusercontent.com') !== -1) {
+            baseUrl = ['https:', '', 'script.' + 'google.com', 'macros', 's', 'AKfycbwD5Ezfr1xclvOw4Q6h6vIxwSTY9Sjq75424i4ex7LbGcAG5QdP27-9KBJeuqARXdQo1w', 'exec'].join('/');
+        }
     }
     const cleanBase = baseUrl.split('?')[0].split('#')[0];
     const url = cleanBase + '?exam=' + encodeURIComponent(examId);
@@ -316,9 +331,14 @@ window.copyExamLink = function(examId) {
 };
 
 window.copyStudentPortalLink = function() {
-    let baseUrl = (typeof window !== 'undefined' && (window.__WEB_APP_URL__ || window.WEB_APP_URL)) || '';
-    if (!baseUrl || baseUrl.indexOf('googleusercontent.com') !== -1) {
-        baseUrl = ['https:', '', 'script.' + 'google.com', 'macros', 's', 'AKfycbwD5Ezfr1xclvOw4Q6h6vIxwSTY9Sjq75424i4ex7LbGcAG5QdP27-9KBJeuqARXdQo1w', 'exec'].join('/');
+    let baseUrl = '';
+    if (typeof window !== 'undefined' && window.location.hostname && (window.location.hostname.includes('vercel.app') || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+        baseUrl = window.location.origin + window.location.pathname;
+    } else {
+        baseUrl = (typeof window !== 'undefined' && (window.__WEB_APP_URL__ || window.WEB_APP_URL)) || '';
+        if (!baseUrl || baseUrl.indexOf('googleusercontent.com') !== -1) {
+            baseUrl = ['https:', '', 'script.' + 'google.com', 'macros', 's', 'AKfycbwD5Ezfr1xclvOw4Q6h6vIxwSTY9Sjq75424i4ex7LbGcAG5QdP27-9KBJeuqARXdQo1w', 'exec'].join('/');
+        }
     }
     const cleanBase = baseUrl.split('?')[0].split('#')[0];
     const url = cleanBase + '?page=student';
@@ -399,6 +419,158 @@ window.handleTogglePortal = async function(examId, currentStatus) {
         UI.showToast('Terjadi kesalahan koneksi.', 'error');
         if (btn1) btn1.disabled = false;
         if (btn2) btn2.disabled = false;
+    }
+};
+
+window.openUserManagementModal = async function() {
+    if (!AppState.user || AppState.user.role !== 'ADMIN') {
+        UI.showToast('Hanya administrator yang dapat mengelola pengguna.', 'warning');
+        return;
+    }
+
+    UI.showModal(`
+        <div class="text-center py-6">
+            <i class="ph ph-spinner ph-spin text-primary" style="font-size: 2.5rem;"></i>
+            <p class="mt-3 text-sm text-muted">Memuat data pengguna...</p>
+        </div>
+    `);
+
+    try {
+        const res = await api.getUsers(AppState.user.sessionId);
+        const users = (res && res.success && Array.isArray(res.data)) ? res.data : [];
+
+        const renderModalContent = (userList) => {
+            return `
+                <div style="max-height: 85vh; display: flex; flex-direction: column;">
+                    <div class="flex justify-between items-center mb-4 pb-3" style="border-bottom: 1px solid var(--border-color);">
+                        <div>
+                            <h3 style="margin:0; font-size: 1.2rem; color: var(--text-primary);">Kelola Pengguna (Guru & Admin)</h3>
+                            <p class="text-xs text-muted mt-0.5">Tambah akun guru langsung dari Vercel Database</p>
+                        </div>
+                        <button class="btn btn-icon btn-secondary btn-sm" onclick="closeModal()">
+                            <i class="ph ph-x"></i>
+                        </button>
+                    </div>
+
+                    <!-- Form Tambah User -->
+                    <div class="card mb-4 p-3" style="background: var(--bg-base); border: 1px solid var(--border-color);">
+                        <h4 class="text-xs font-bold uppercase mb-2 text-primary flex items-center gap-1.5">
+                            <i class="ph ph-user-plus"></i> Tambah Akun Baru
+                        </h4>
+                        <form id="addUserForm" onsubmit="handleCreateUser(event)" class="grid grid-cols-2 gap-2 text-xs">
+                            <div class="input-group" style="margin-bottom: 0;">
+                                <label class="input-label" style="font-size: 0.72rem;">Username *</label>
+                                <input type="text" id="newUsername" class="input-control" placeholder="Contoh: guru_fisika" required style="padding: 0.35rem 0.5rem; font-size: 0.8rem;">
+                            </div>
+                            <div class="input-group" style="margin-bottom: 0;">
+                                <label class="input-label" style="font-size: 0.72rem;">Password *</label>
+                                <input type="text" id="newPassword" class="input-control" placeholder="Minimal 6 karakter" required style="padding: 0.35rem 0.5rem; font-size: 0.8rem;">
+                            </div>
+                            <div class="input-group" style="margin-bottom: 0;">
+                                <label class="input-label" style="font-size: 0.72rem;">Nama Lengkap Guru *</label>
+                                <input type="text" id="newName" class="input-control" placeholder="Nama & Gelar" required style="padding: 0.35rem 0.5rem; font-size: 0.8rem;">
+                            </div>
+                            <div class="input-group" style="margin-bottom: 0;">
+                                <label class="input-label" style="font-size: 0.72rem;">Peran (Role) *</label>
+                                <select id="newRole" class="input-control" style="padding: 0.35rem 0.5rem; font-size: 0.8rem;">
+                                    <option value="TEACHER">GURU (Pengampu Mapel)</option>
+                                    <option value="ADMIN">ADMINISTRATOR (Akses Penuh)</option>
+                                </select>
+                            </div>
+                            <div style="grid-column: span 2;" class="flex justify-end mt-1">
+                                <button type="submit" id="btnSaveNewUser" class="btn btn-primary btn-sm flex items-center gap-1" style="font-size: 0.78rem;">
+                                    <i class="ph ph-plus-circle"></i> Tambah Akun
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- Tabel Daftar User -->
+                    <div style="overflow-y: auto; flex-grow: 1;">
+                        <table style="width: 100%; border-collapse: collapse; font-size: 0.85rem; text-align: left;">
+                            <thead>
+                                <tr style="background: var(--bg-base); border-bottom: 2px solid var(--border-color);">
+                                    <th style="padding: 8px 10px;">Username</th>
+                                    <th style="padding: 8px 10px;">Nama Pengguna</th>
+                                    <th style="padding: 8px 10px; text-align: center;">Peran</th>
+                                    <th style="padding: 8px 10px; text-align: center; width: 60px;">Aksi</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${userList.map(u => `
+                                    <tr style="border-bottom: 1px solid var(--border-color);">
+                                        <td style="padding: 8px 10px; font-weight: 600; font-family: monospace;">${escapeHtml(u.username)}</td>
+                                        <td style="padding: 8px 10px;">${escapeHtml(u.name || '-')}</td>
+                                        <td style="padding: 8px 10px; text-align: center;">
+                                            <span class="badge ${u.role === 'ADMIN' ? 'badge-active' : 'badge-draft'}" style="font-size: 0.7rem; padding: 2px 6px;">
+                                                ${u.role || 'TEACHER'}
+                                            </span>
+                                        </td>
+                                        <td style="padding: 8px 10px; text-align: center;">
+                                            ${u.username !== 'admin' ? `
+                                                <button class="btn btn-icon btn-secondary text-error btn-sm" onclick="handleDeleteUser('${escapeHtml(u.username)}')" title="Hapus Akun">
+                                                    <i class="ph ph-trash"></i>
+                                                </button>
+                                            ` : '<span class="text-xs text-muted">-</span>'}
+                                        </td>
+                                    </tr>
+                                `).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="flex justify-end mt-4 pt-3" style="border-top: 1px solid var(--border-color);">
+                        <button class="btn btn-secondary btn-sm" onclick="closeModal()">Tutup</button>
+                    </div>
+                </div>
+            `;
+        };
+
+        UI.showModal(renderModalContent(users));
+
+        window.handleCreateUser = async function(e) {
+            e.preventDefault();
+            const btn = document.getElementById('btnSaveNewUser');
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ph ph-spinner ph-spin"></i> Menyimpan...'; }
+
+            const username = document.getElementById('newUsername').value.trim();
+            const password = document.getElementById('newPassword').value.trim();
+            const name = document.getElementById('newName').value.trim();
+            const role = document.getElementById('newRole').value;
+
+            try {
+                const saveRes = await api.saveUser(AppState.user.sessionId, { username, password, name, role });
+                if (saveRes && saveRes.success) {
+                    UI.showToast(`Akun "${username}" berhasil ditambahkan!`, 'success');
+                    openUserManagementModal();
+                } else {
+                    UI.showToast(saveRes.message || 'Gagal menambahkan akun.', 'error');
+                    if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-plus-circle"></i> Tambah Akun'; }
+                }
+            } catch (err) {
+                UI.showToast('Terjadi kesalahan: ' + err.message, 'error');
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ph ph-plus-circle"></i> Tambah Akun'; }
+            }
+        };
+
+        window.handleDeleteUser = async function(username) {
+            if (!confirm(`Apakah Anda yakin ingin menghapus akun "${username}"?`)) return;
+            try {
+                const delRes = await api.deleteUser(AppState.user.sessionId, username);
+                if (delRes && delRes.success) {
+                    UI.showToast(`Akun "${username}" berhasil dihapus.`, 'success');
+                    openUserManagementModal();
+                } else {
+                    UI.showToast(delRes.message || 'Gagal menghapus akun.', 'error');
+                }
+            } catch (err) {
+                UI.showToast('Terjadi kesalahan: ' + err.message, 'error');
+            }
+        };
+
+    } catch (e) {
+        UI.showToast('Gagal memuat pengguna: ' + e.message, 'error');
+        closeModal();
     }
 };
 

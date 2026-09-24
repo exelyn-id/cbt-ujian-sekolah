@@ -1,8 +1,8 @@
 // ============================================================================
-// API Endpoint: /api/submit (High-Concurrency Server-Side Exam Scoring & Queue)
+// API Endpoint: /api/submit (High-Concurrency Server-Side Exam Scoring & Storage)
 // ============================================================================
 const { kv } = require('./_redis');
-const { callGoogleAppsScript } = require('./_sheets');
+const db = require('./_db');
 
 function normalizeTFBool(val) {
     if (val === undefined || val === null) return '';
@@ -25,6 +25,11 @@ function calculateQuestionScore(q, studentAns) {
     // Parse JSON string keys if stored as string
     if (typeof key === 'string' && (key.trim().startsWith('{') || key.trim().startsWith('['))) {
         try { key = JSON.parse(key); } catch (e) {}
+    }
+
+    // Parse JSON string answers if sent as string
+    if (typeof studentAns === 'string' && (studentAns.trim().startsWith('{') || studentAns.trim().startsWith('['))) {
+        try { studentAns = JSON.parse(studentAns); } catch (e) {}
     }
 
     // 1. Single Choice (MCQ)
@@ -178,22 +183,10 @@ module.exports = async function handler(req, res) {
             return res.status(400).json({ success: false, message: 'attemptId dan examId wajib diisi.' });
         }
 
-        // 1. Fetch full exam (with answer keys) from Redis or Google Apps Script
-        let fullExam = await kv.get(`exam:full:${examId}`);
-        if (!fullExam || !Array.isArray(fullExam.questions) || fullExam.questions.length === 0) {
-            try {
-                const gasRes = await callGoogleAppsScript('get_exam_with_questions', { examId });
-                if (gasRes && gasRes.success && gasRes.data) {
-                    fullExam = gasRes.data;
-                    await kv.set(`exam:full:${examId}`, fullExam, { ex: 86400 * 30 });
-                }
-            } catch (gasErr) {
-                console.warn('Could not fetch questions from GAS:', gasErr.message);
-            }
-        }
-
-        const questions = (fullExam && Array.isArray(fullExam.questions)) ? fullExam.questions : [];
-        const kkm = Number((fullExam && fullExam.kkm) || 75);
+        // 1. Fetch full exam & questions directly from Vercel DB
+        const fullExam = (await db.getExam(examId)) || {};
+        const questions = (await db.getQuestions(examId)) || [];
+        const kkm = Number(fullExam.kkm || 75);
         const finalAnswers = answers || {};
 
         // 2. Score evaluation
@@ -243,19 +236,20 @@ module.exports = async function handler(req, res) {
             rawScore: totalScore,
             maxRawScore: totalMaxScore,
             finalScore: normalizedScore,
+            score: normalizedScore,
             kkm: kkm,
             passStatus: passStatus,
             answers: answerRecords
         };
 
-        // 4. Save Attempt in Redis buffer (persisted 30 days)
+        // 4. Save Attempt and Answers in Vercel Redis (persistent 30 days)
         await kv.set(`attempt:record:${attemptId}`, attemptRecord, { ex: 86400 * 30 });
         await kv.set(`attempt:answers:${attemptId}`, answerRecords, { ex: 86400 * 30 });
 
-        // 4B. Index attemptId in exam's attempt list for real-time teacher viewing & download
+        // 5. Index attemptId for real-time teacher viewing & download
         try {
             const examAttemptsKey = `exam:attempts:${examId}`;
-            const currentList = await kv.lrange(examAttemptsKey, 0, -1) || [];
+            const currentList = (await kv.lrange(examAttemptsKey, 0, -1)) || [];
             if (!currentList.includes(attemptId)) {
                 await kv.rpush(examAttemptsKey, attemptId);
             }
@@ -263,23 +257,13 @@ module.exports = async function handler(req, res) {
             console.error('Failed to index exam attempt in Redis:', indexErr);
         }
 
-        // 5. Enqueue for Google Spreadsheet Batch Synchronization
-        await kv.rpush('queue:sync_to_sheets', attemptId);
-
-        // 6. Trigger background sync without awaiting to keep client response sub-second
-        if (req.headers && req.headers.host && !req.headers.host.includes('test') && !process.env.TEST_MODE) {
-            const syncUrl = `${req.headers['x-forwarded-proto'] || 'https'}://${req.headers.host}/api/sync-to-sheets`;
-            fetch(syncUrl, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ trigger: 'after_submit' }) })
-                .catch(() => {});
-        }
-
-        // 7. Instant Return to Student!
+        // 6. Return response to student instantly
         return res.status(200).json({
             success: true,
             data: {
                 attemptId: attemptId,
                 status: 'SUBMITTED',
-                showResult: fullExam ? fullExam.showResult !== false : true,
+                showResult: fullExam.showResult !== false,
                 score: normalizedScore,
                 kkm: kkm,
                 passStatus: passStatus,

@@ -233,7 +233,7 @@ const api = {
         if (isGAS) return _callGAS('loginTeacher', username, password);
         if (isVercel) {
             const vRes = await _callVercel('/api/teacher?action=login_teacher', 'POST', { username, password });
-            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay();
@@ -265,6 +265,10 @@ const api = {
 
     async logoutTeacher(sessionId) {
         if (isGAS) return _callGAS('logoutTeacher', sessionId);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=logout_teacher', 'POST', { sessionId });
+            if (vRes) return vRes;
+        }
         await this._delay(200);
         return { success: true, message: 'Berhasil keluar' };
     },
@@ -274,7 +278,7 @@ const api = {
         if (isGAS) return _callGAS('getTeacherExams', sessionId);
         if (isVercel) {
             const vRes = await _callVercel('/api/teacher?action=get_teacher_exams', 'POST', { sessionId });
-            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay();
@@ -292,7 +296,7 @@ const api = {
         if (isGAS) return _callGAS('toggleExamPortalVisibility', sessionId, examId, showInPortal);
         if (isVercel) {
             const vRes = await _callVercel('/api/teacher?action=toggle_exam_portal', 'POST', { sessionId, examId, showInPortal });
-            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay();
@@ -315,7 +319,7 @@ const api = {
         if (isGAS) return _callGAS('getExam', sessionId, examId);
         if (isVercel) {
             const vRes = await _callVercel('/api/teacher?action=get_exam', 'POST', { sessionId, examId });
-            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay();
@@ -329,7 +333,7 @@ const api = {
         if (isGAS) return _callGAS('saveExam', sessionId, examData);
         if (isVercel) {
             const vRes = await _callVercel('/api/teacher?action=save_exam', 'POST', { sessionId, examData });
-            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay();
@@ -359,7 +363,7 @@ const api = {
         if (isGAS) return _callGAS('deleteExam', sessionId, examId);
         if (isVercel) {
             const vRes = await _callVercel('/api/teacher?action=delete_exam', 'POST', { sessionId, examId });
-            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay();
@@ -377,7 +381,7 @@ const api = {
         if (isGAS) return _callGAS('duplicateExam', sessionId, examId);
         if (isVercel) {
             const vRes = await _callVercel('/api/teacher?action=duplicate_exam', 'POST', { sessionId, examId });
-            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay();
@@ -407,7 +411,7 @@ const api = {
         if (isGAS) return _callGAS('getQuestions', sessionId, examId);
         if (isVercel) {
             const vRes = await _callVercel('/api/teacher?action=get_questions', 'POST', { sessionId, examId });
-            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay();
@@ -420,7 +424,7 @@ const api = {
         if (isGAS) return _callGAS('saveQuestions', sessionId, examId, questionsList);
         if (isVercel) {
             const vRes = await _callVercel('/api/teacher?action=save_questions', 'POST', { sessionId, examId, questionsList });
-            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay();
@@ -435,7 +439,7 @@ const api = {
         if (isGAS) return _callGAS('getActivePublicExams');
         if (isVercel) {
             const vRes = await _callVercel('/api/exams');
-            if (vRes && vRes.success && Array.isArray(vRes.data)) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay();
@@ -463,7 +467,7 @@ const api = {
         if (isGAS) return _callGAS('getPublicExam', examId);
         if (isVercel) {
             const vRes = await _callVercel('/api/exams?id=' + encodeURIComponent(examId));
-            if (vRes && vRes.success && vRes.data) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay();
@@ -484,23 +488,12 @@ const api = {
     async startExamAttempt(examId, participantData) {
         if (isGAS) return _callGAS('startExamAttempt', examId, participantData);
         if (isVercel) {
-            const vRes = await _callVercel('/api/exams?id=' + encodeURIComponent(examId));
-            if (vRes && vRes.success && vRes.data) {
-                const exam = vRes.data;
-                const attemptId = 'ATT_' + Date.now().toString(36).toUpperCase() + '_' + Math.floor(Math.random() * 9000 + 1000);
-                const deadlineAt = Date.now() + (Number(exam.durationMinutes || 60) * 60 * 1000);
-                return {
-                    success: true,
-                    data: {
-                        attemptId: attemptId,
-                        deadlineAt: deadlineAt,
-                        participantName: participantData.name,
-                        className: participantData.className,
-                        nis: participantData.nis,
-                        questions: exam.questions || []
-                    }
-                };
-            }
+            const vRes = await _callVercel('/api/exams', 'POST', {
+                action: 'start_attempt',
+                examId: examId,
+                participantData: participantData
+            });
+            if (vRes) return vRes;
         }
 
         await this._delay();
@@ -546,7 +539,7 @@ const api = {
                 examId: examId,
                 answersMap: answersMap
             });
-            if (vRes && vRes.success) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay(200);
@@ -608,7 +601,7 @@ const api = {
         if (isGAS) return _callGAS('getExamResults', sessionId, examId);
         if (isVercel) {
             const vRes = await _callVercel('/api/teacher?action=get_exam_results', 'POST', { sessionId, examId });
-            if (vRes && vRes.success) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay();
@@ -641,7 +634,7 @@ const api = {
         if (isGAS) return _callGAS('getStudentAttemptDetail', sessionId, attemptId);
         if (isVercel) {
             const vRes = await _callVercel('/api/teacher?action=get_student_attempt_detail', 'POST', { sessionId, attemptId });
-            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay();
@@ -726,7 +719,7 @@ const api = {
         if (isGAS) return _callGAS('getExamResultsExportData', sessionId, examId);
         if (isVercel) {
             const vRes = await _callVercel('/api/teacher?action=get_exam_results_export_data', 'POST', { sessionId, examId });
-            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay(800);
@@ -764,6 +757,45 @@ const api = {
                 attempts: attempts
             }
         };
+    },
+
+    // 6. USER MANAGEMENT (Admin)
+    async getUsers(sessionId) {
+        if (isGAS) return _callGAS('getUsers', sessionId);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=get_users', 'POST', { sessionId });
+            if (vRes) return vRes;
+        }
+        await this._delay(300);
+        return {
+            success: true,
+            data: [
+                { id: 'ADM_001', username: 'admin', name: 'Administrator Sekolah', role: 'ADMIN' },
+                { id: 'TCH_001', username: 'guru', name: 'Pak Andi Prasetyo, S.Kom', role: 'TEACHER' },
+                { id: 'TCH_002', username: 'andi', name: 'Pak Andi Prasetyo, S.Kom', role: 'TEACHER' },
+                { id: 'TCH_003', username: 'budi', name: 'Pak Budi Santoso, S.Pd', role: 'TEACHER' }
+            ]
+        };
+    },
+
+    async saveUser(sessionId, userData) {
+        if (isGAS) return _callGAS('saveUser', sessionId, userData);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=save_user', 'POST', { sessionId, userData });
+            if (vRes) return vRes;
+        }
+        await this._delay(300);
+        return { success: true, message: 'Akun pengguna berhasil disimpan.' };
+    },
+
+    async deleteUser(sessionId, username) {
+        if (isGAS) return _callGAS('deleteUser', sessionId, username);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=delete_user', 'POST', { sessionId, username });
+            if (vRes) return vRes;
+        }
+        await this._delay(300);
+        return { success: true, message: 'Akun pengguna berhasil dihapus.' };
     },
 
     async uploadImage(sessionId, base64Data, filename, mimeType) {
