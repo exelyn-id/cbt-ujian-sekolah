@@ -34,6 +34,19 @@ const kv = {
         return val ? JSON.parse(JSON.stringify(val)) : null;
     },
 
+    async mget(...keys) {
+        if (!keys || keys.length === 0) return [];
+        const flatKeys = Array.isArray(keys[0]) ? keys[0] : keys;
+        if (flatKeys.length === 0) return [];
+        if (redis) {
+            try { return (await redis.mget(...flatKeys)) || []; } catch (e) { console.error('Redis mget error:', e); }
+        }
+        return flatKeys.map(k => {
+            const val = memoryStore.get(k);
+            return val ? JSON.parse(JSON.stringify(val)) : null;
+        });
+    },
+
     async set(key, value, options = {}) {
         if (redis) {
             try { return await redis.set(key, value, options); } catch (e) { console.error('Redis set error:', e); }

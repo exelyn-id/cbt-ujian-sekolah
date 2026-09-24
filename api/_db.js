@@ -235,11 +235,15 @@ async function getTeacherExams(teacherId, role, username) {
         let totalScore = 0;
         let submittedCount = 0;
 
-        for (const attId of attemptIds) {
-            const att = await kv.get(`attempt:record:${attId}`);
-            if (att && att.status === 'SUBMITTED') {
-                submittedCount++;
-                totalScore += Number(att.finalScore || 0);
+        for (let i = 0; i < attemptIds.length; i += 50) {
+            const chunk = attemptIds.slice(i, i + 50);
+            const chunkKeys = chunk.map(id => `attempt:record:${id}`);
+            const recs = (await kv.mget(chunkKeys)) || [];
+            for (const att of recs) {
+                if (att && att.status === 'SUBMITTED') {
+                    submittedCount++;
+                    totalScore += Number(att.finalScore || 0);
+                }
             }
         }
 
@@ -507,22 +511,26 @@ async function getExamResults(examId) {
     const attemptIds = (await kv.lrange(`exam:attempts:${examId}`, 0, -1)) || [];
     const results = [];
 
-    for (const attId of attemptIds) {
-        const rec = await kv.get(`attempt:record:${attId}`);
-        if (rec) {
-            results.push({
-                attemptId: rec.attemptId,
-                examId: rec.examId,
-                nis: rec.nis || '',
-                name: rec.participantName || '',
-                className: rec.className || '',
-                attemptNumber: rec.attemptNumber || 1,
-                status: rec.status || 'SUBMITTED',
-                score: rec.status === 'SUBMITTED' ? (rec.finalScore !== undefined ? rec.finalScore : rec.rawScore) : null,
-                kkm: rec.kkm || 75,
-                passStatus: rec.status === 'SUBMITTED' ? (rec.passStatus || 'BELUM LULUS') : null,
-                submittedAt: rec.submittedAt || rec.startedAt
-            });
+    for (let i = 0; i < attemptIds.length; i += 50) {
+        const chunk = attemptIds.slice(i, i + 50);
+        const chunkKeys = chunk.map(id => `attempt:record:${id}`);
+        const recs = (await kv.mget(chunkKeys)) || [];
+        for (const rec of recs) {
+            if (rec) {
+                results.push({
+                    attemptId: rec.attemptId,
+                    examId: rec.examId,
+                    nis: rec.nis || '',
+                    name: rec.participantName || '',
+                    className: rec.className || '',
+                    attemptNumber: rec.attemptNumber || 1,
+                    status: rec.status || 'SUBMITTED',
+                    score: rec.status === 'SUBMITTED' ? (rec.finalScore !== undefined ? rec.finalScore : rec.rawScore) : null,
+                    kkm: rec.kkm || 75,
+                    passStatus: rec.status === 'SUBMITTED' ? (rec.passStatus || 'BELUM LULUS') : null,
+                    submittedAt: rec.submittedAt || rec.startedAt
+                });
+            }
         }
     }
 
@@ -634,45 +642,49 @@ async function getExamResultsExportData(examId) {
     const attemptIds = (await kv.lrange(`exam:attempts:${examId}`, 0, -1)) || [];
     const attempts = [];
 
-    for (const attId of attemptIds) {
-        const rec = await kv.get(`attempt:record:${attId}`);
-        if (rec) {
-            const answersMap = {};
-            let totalCorrect = 0;
-            let totalWrong = 0;
+    for (let i = 0; i < attemptIds.length; i += 50) {
+        const chunk = attemptIds.slice(i, i + 50);
+        const chunkKeys = chunk.map(id => `attempt:record:${id}`);
+        const recs = (await kv.mget(chunkKeys)) || [];
+        for (const rec of recs) {
+            if (rec) {
+                const answersMap = {};
+                let totalCorrect = 0;
+                let totalWrong = 0;
 
-            if (Array.isArray(rec.answers)) {
-                rec.answers.forEach(ans => {
-                    const ansItem = {
-                        studentAnswer: ans.studentAnswer,
-                        isCorrect: ans.isCorrect,
-                        awardedScore: ans.scoreAwarded !== undefined ? ans.scoreAwarded : (ans.awardedScore !== undefined ? ans.awardedScore : 0),
-                        maxScore: ans.maxScore !== undefined ? ans.maxScore : 10
-                    };
-                    answersMap[ans.questionId] = ansItem;
-                    answersMap[ans.id] = ansItem;
-                    if (ans.isCorrect) totalCorrect++;
-                    else totalWrong++;
+                if (Array.isArray(rec.answers)) {
+                    rec.answers.forEach(ans => {
+                        const ansItem = {
+                            studentAnswer: ans.studentAnswer,
+                            isCorrect: ans.isCorrect,
+                            awardedScore: ans.scoreAwarded !== undefined ? ans.scoreAwarded : (ans.awardedScore !== undefined ? ans.awardedScore : 0),
+                            maxScore: ans.maxScore !== undefined ? ans.maxScore : 10
+                        };
+                        answersMap[ans.questionId] = ansItem;
+                        answersMap[ans.id] = ansItem;
+                        if (ans.isCorrect) totalCorrect++;
+                        else totalWrong++;
+                    });
+                }
+
+                attempts.push({
+                    attemptId: rec.attemptId,
+                    examId: rec.examId,
+                    nis: rec.nis || '',
+                    name: rec.participantName || '',
+                    className: rec.className || '',
+                    attemptNumber: rec.attemptNumber || 1,
+                    status: rec.status || 'SUBMITTED',
+                    score: rec.status === 'SUBMITTED' ? (rec.finalScore !== undefined ? rec.finalScore : rec.rawScore) : null,
+                    kkm: rec.kkm || 75,
+                    passStatus: rec.status === 'SUBMITTED' ? (rec.passStatus || 'BELUM LULUS') : null,
+                    startedAt: rec.startedAt,
+                    submittedAt: rec.submittedAt,
+                    totalCorrect: totalCorrect,
+                    totalWrong: totalWrong,
+                    answers: answersMap
                 });
             }
-
-            attempts.push({
-                attemptId: rec.attemptId,
-                examId: rec.examId,
-                nis: rec.nis || '',
-                name: rec.participantName || '',
-                className: rec.className || '',
-                attemptNumber: rec.attemptNumber || 1,
-                status: rec.status || 'SUBMITTED',
-                score: rec.status === 'SUBMITTED' ? (rec.finalScore !== undefined ? rec.finalScore : rec.rawScore) : null,
-                kkm: rec.kkm || 75,
-                passStatus: rec.status === 'SUBMITTED' ? (rec.passStatus || 'BELUM LULUS') : null,
-                startedAt: rec.startedAt,
-                submittedAt: rec.submittedAt,
-                totalCorrect: totalCorrect,
-                totalWrong: totalWrong,
-                answers: answersMap
-            });
         }
     }
 

@@ -249,10 +249,7 @@ module.exports = async function handler(req, res) {
         // 5. Index attemptId for real-time teacher viewing & download
         try {
             const examAttemptsKey = `exam:attempts:${examId}`;
-            const currentList = (await kv.lrange(examAttemptsKey, 0, -1)) || [];
-            if (!currentList.includes(attemptId)) {
-                await kv.rpush(examAttemptsKey, attemptId);
-            }
+            await kv.rpush(examAttemptsKey, attemptId);
         } catch (indexErr) {
             console.error('Failed to index exam attempt in Redis:', indexErr);
         }
