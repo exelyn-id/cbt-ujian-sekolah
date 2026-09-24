@@ -202,7 +202,7 @@ function downloadQuestionsAsExcel(questionsList, examTitle) {
         const headers = [
             "Nomor Urut", "Tipe Soal", "Teks Soal", "Teks Bawah Gambar", "URL Gambar Soal",
             "Opsi A / Pernyataan 1", "Opsi B / Pernyataan 2", "Opsi C / Pernyataan 3", "Opsi D / Pernyataan 4", "Opsi E / Pernyataan 5",
-            "Kunci Jawaban", "Bobot Poin", "Pembahasan"
+            "Kunci Jawaban", "Bobot Poin", "Pembahasan", "Durasi Soal (Detik)"
         ];
 
         const rows = [headers];
@@ -275,7 +275,8 @@ function downloadQuestionsAsExcel(questionsList, examTitle) {
                 optTexts[4],
                 keyStr,
                 Number(q.score || 10),
-                q.explanation || ''
+                q.explanation || '',
+                q.durationSeconds || ''
             ]);
         });
 
@@ -283,7 +284,7 @@ function downloadQuestionsAsExcel(questionsList, examTitle) {
         ws['!cols'] = [
             { wch: 10 }, { wch: 22 }, { wch: 45 }, { wch: 30 }, { wch: 25 },
             { wch: 25 }, { wch: 25 }, { wch: 25 }, { wch: 25 }, { wch: 25 },
-            { wch: 15 }, { wch: 10 }, { wch: 25 }
+            { wch: 15 }, { wch: 10 }, { wch: 25 }, { wch: 18 }
         ];
 
         const wb = XLSX.utils.book_new();

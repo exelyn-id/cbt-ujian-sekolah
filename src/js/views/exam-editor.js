@@ -9,7 +9,8 @@ Router.addRoute('/exam-editor', async (params) => {
     let exam = {
         title: '', subject: '', material: '', className: '',
         durationMinutes: 60, kkm: 75, maxAttempts: 1, attemptScoring: 'HIGHEST',
-        randomizeQuestions: false, randomizeOptions: false, showResult: true, status: 'DRAFT'
+        randomizeQuestions: false, randomizeOptions: false, showResult: true, status: 'DRAFT',
+        enableQuestionTimer: false, defaultQuestionDuration: 60
     };
     
     let isEdit = false;
@@ -90,7 +91,7 @@ Router.addRoute('/exam-editor', async (params) => {
                             </div>
                             
                             <div class="input-group">
-                                <label class="input-label" for="durationMinutes">Durasi (Menit) <span class="text-error">*</span></label>
+                                <label class="input-label" for="durationMinutes">Durasi Total Ujian (Menit) <span class="text-error">*</span></label>
                                 <input type="number" id="durationMinutes" class="input-control" value="${exam.durationMinutes}" min="1" required>
                             </div>
                             
@@ -120,6 +121,34 @@ Router.addRoute('/exam-editor', async (params) => {
                                     <option value="ACTIVE" ${exam.status === 'ACTIVE' ? 'selected' : ''}>ACTIVE (Dapat Dikerjakan)</option>
                                     <option value="INACTIVE" ${exam.status === 'INACTIVE' ? 'selected' : ''}>INACTIVE (Ditutup)</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        <!-- Pengaturan Waktu Per Soal (Opsional) -->
+                        <div class="p-3.5 mt-4 mb-4" style="background: var(--bg-base); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                            <label class="flex items-start gap-2.5" style="cursor: pointer;">
+                                <input type="checkbox" id="enableQuestionTimer" ${exam.enableQuestionTimer ? 'checked' : ''} onchange="toggleQuestionTimerSetting(this.checked)" style="width: 1.15rem; height: 1.15rem; margin-top: 2px; accent-color: var(--primary-600); cursor: pointer;">
+                                <div style="flex: 1;">
+                                    <span class="font-bold text-sm block" style="color: var(--text-primary);">
+                                        <i class="ph ph-timer text-primary"></i> Waktu Pengerjaan Tersendiri Per Soal (Opsional)
+                                    </span>
+                                    <span class="text-xs text-muted block mt-0.5" style="line-height: 1.45;">
+                                        Jika diaktifkan, tiap soal akan memiliki batas waktu countdown tersendiri dan otomatis berpindah ke soal berikutnya saat waktu habis. Anda juga dapat menentukan waktu berbeda untuk masing-masing soal di halaman <strong>Kelola Soal</strong>.
+                                    </span>
+                                </div>
+                            </label>
+
+                            <div id="questionDurationGroup" style="display: ${exam.enableQuestionTimer ? 'block' : 'none'}; margin-top: 0.85rem; padding-top: 0.85rem; border-top: 1px dashed var(--border-color);">
+                                <label class="input-label" for="defaultQuestionDuration" style="font-size: 0.85rem;">
+                                    Durasi Default Tiap Soal (Detik) <span class="text-error">*</span>
+                                </label>
+                                <div class="flex items-center gap-2">
+                                    <input type="number" id="defaultQuestionDuration" class="input-control" value="${exam.defaultQuestionDuration || 60}" min="5" style="max-width: 130px; font-weight: 600;">
+                                    <span class="text-xs text-muted">detik per soal (contoh: 60 = 1 menit, 90 = 1,5 menit, 120 = 2 menit)</span>
+                                </div>
+                                <div class="text-xs mt-1.5" style="color: var(--primary-700);">
+                                    <i class="ph ph-info"></i> Durasi tiap soal bisa diatur secara khusus di halaman <strong>Kelola Soal</strong>. Jika tidak diubah, maka soal akan memakai durasi default di atas.
+                                </div>
                             </div>
                         </div>
 
@@ -155,6 +184,13 @@ Router.addRoute('/exam-editor', async (params) => {
     `;
 });
 
+window.toggleQuestionTimerSetting = function(checked) {
+    const group = document.getElementById('questionDurationGroup');
+    if (group) {
+        group.style.display = checked ? 'block' : 'none';
+    }
+};
+
 window.handleSaveExam = async function(event) {
     event.preventDefault();
     const btn = document.getElementById('saveExamBtn');
@@ -163,6 +199,9 @@ window.handleSaveExam = async function(event) {
 
     const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
     const examId = params.get('id');
+
+    const enableQuestionTimer = Boolean(document.getElementById('enableQuestionTimer')?.checked);
+    const defaultQuestionDuration = Number(document.getElementById('defaultQuestionDuration')?.value || 60);
 
     const examData = {
         examId: examId || undefined,
@@ -179,6 +218,8 @@ window.handleSaveExam = async function(event) {
         status: document.getElementById('status').value,
         dateStart: document.getElementById('dateStart').value,
         dateEnd: document.getElementById('dateEnd').value,
+        enableQuestionTimer: enableQuestionTimer,
+        defaultQuestionDuration: defaultQuestionDuration,
         randomizeQuestions: document.getElementById('randomizeQuestions').checked,
         randomizeOptions: document.getElementById('randomizeOptions').checked,
         showResult: document.getElementById('showResult').checked

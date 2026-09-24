@@ -63,8 +63,18 @@ Router.addRoute('/student/landing', async (params) => {
                     </div>
                     <div class="flex justify-between">
                         <span class="text-sm font-semibold text-secondary">Waktu Pengerjaan</span>
-                        <span class="text-sm font-bold text-primary">${exam.durationMinutes} Menit</span>
+                        <span class="text-sm font-bold text-primary">${exam.enableQuestionTimer ? 'Batas Waktu Per Soal' : `${exam.durationMinutes} Menit`}</span>
                     </div>
+                    ${exam.enableQuestionTimer ? `
+                        <div class="flex justify-between mt-2 pt-2" style="border-top: 1px dashed var(--primary-200);">
+                            <span class="text-sm font-semibold text-secondary flex items-center gap-1">
+                                <i class="ph ph-timer" style="color: #d97706;"></i> Mode Timer
+                            </span>
+                            <span class="badge badge-timer-warning" style="font-size: 0.76rem; padding: 2px 8px;">
+                                Waktu Per Soal (${exam.defaultQuestionDuration || 60}s)
+                            </span>
+                        </div>
+                    ` : ''}
                     ${exam.description ? `
                     <div class="mt-4 pt-4" style="border-top: 1px solid var(--primary-200);">
                         <span class="text-sm font-semibold text-secondary block mb-1">Deskripsi</span>
@@ -142,9 +152,14 @@ window.handleStartExam = async function(event) {
         const res = await api.startExamAttempt(examId, { name, className, nis });
         
         if (res.success && res.data) {
+            const mergedExam = {
+                ...AppState.currentExam,
+                enableQuestionTimer: (res.data.enableQuestionTimer !== undefined) ? res.data.enableQuestionTimer : AppState.currentExam.enableQuestionTimer,
+                defaultQuestionDuration: res.data.defaultQuestionDuration || AppState.currentExam.defaultQuestionDuration || 60
+            };
             AppState.update({ 
                 mode: 'student',
-                currentExam: AppState.currentExam,
+                currentExam: mergedExam,
                 attempt: res.data,
                 questions: res.data.questions,
                 answers: {}
@@ -152,7 +167,7 @@ window.handleStartExam = async function(event) {
             try {
                 localStorage.setItem('cbt_active_exam_session', JSON.stringify({
                     mode: 'student',
-                    currentExam: AppState.currentExam,
+                    currentExam: mergedExam,
                     attempt: res.data,
                     questions: res.data.questions
                 }));

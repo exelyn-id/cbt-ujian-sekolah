@@ -473,6 +473,8 @@ async function getActivePublicExams() {
                 description: e.description || '',
                 instructions: e.instructions || '',
                 durationMinutes: Number(e.durationMinutes || 60),
+                enableQuestionTimer: Boolean(e.enableQuestionTimer),
+                defaultQuestionDuration: Number(e.defaultQuestionDuration || 60),
                 totalQuestions: qList.length,
                 kkm: Number(e.kkm || 75),
                 maxAttempts: Number(e.maxAttempts || 1),

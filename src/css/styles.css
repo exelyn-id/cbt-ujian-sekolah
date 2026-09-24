@@ -1025,3 +1025,37 @@ h3 { font-size: 1.25rem; }
     border-color: #94a3b8 !important;
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
+
+/* Per-Question Countdown Timer Badges */
+.badge-timer-warning {
+    background-color: #fef3c7 !important;
+    color: #92400e !important;
+    border: 1px solid #fcd34d !important;
+    font-size: 0.8rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: var(--radius-full);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 600;
+}
+.badge-timer-danger {
+    background-color: #fee2e2 !important;
+    color: #b91c1c !important;
+    border: 1px solid #fca5a5 !important;
+    font-size: 0.8rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: var(--radius-full);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 700;
+}
+@keyframes pulse-timer {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.04); }
+}
+.pulse-timer {
+    animation: pulse-timer 0.85s infinite ease-in-out;
+}
+

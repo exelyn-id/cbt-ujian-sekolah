@@ -488,6 +488,8 @@ const api = {
             description: e.description || '',
             instructions: e.instructions || '',
             durationMinutes: Number(e.durationMinutes || 60),
+            enableQuestionTimer: Boolean(e.enableQuestionTimer),
+            defaultQuestionDuration: Number(e.defaultQuestionDuration || 60),
             totalQuestions: (db.questions[e.examId] || []).length,
             kkm: Number(e.kkm || 75),
             maxAttempts: Number(e.maxAttempts || 1),
@@ -549,6 +551,7 @@ const api = {
             tfType: q.tfType || 'BENAR_SALAH',
             text: q.text,
             imageUrl: q.imageUrl || '',
+            durationSeconds: q.durationSeconds || null,
             options: (q.options || []).map(o => ({ id: o.id, text: o.text, imageUrl: o.imageUrl || '' }))
         }));
 
@@ -560,6 +563,8 @@ const api = {
                 participantName: participantData.name,
                 className: participantData.className,
                 nis: participantData.nis,
+                enableQuestionTimer: Boolean(exam.enableQuestionTimer),
+                defaultQuestionDuration: Number(exam.defaultQuestionDuration || 60),
                 questions: sanitized
             }
         };

@@ -1044,6 +1044,40 @@ h3 { font-size: 1.25rem; }
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
+/* Per-Question Countdown Timer Badges */
+.badge-timer-warning {
+    background-color: #fef3c7 !important;
+    color: #92400e !important;
+    border: 1px solid #fcd34d !important;
+    font-size: 0.8rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: var(--radius-full);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 600;
+}
+.badge-timer-danger {
+    background-color: #fee2e2 !important;
+    color: #b91c1c !important;
+    border: 1px solid #fca5a5 !important;
+    font-size: 0.8rem;
+    padding: 0.25rem 0.65rem;
+    border-radius: var(--radius-full);
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    font-weight: 700;
+}
+@keyframes pulse-timer {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.04); }
+}
+.pulse-timer {
+    animation: pulse-timer 0.85s infinite ease-in-out;
+}
+
+
 
 
     </style>
@@ -1271,7 +1305,7 @@ function downloadQuestionsAsExcel(questionsList, examTitle) {
         const headers = [
             "Nomor Urut", "Tipe Soal", "Teks Soal", "Teks Bawah Gambar", "URL Gambar Soal",
             "Opsi A / Pernyataan 1", "Opsi B / Pernyataan 2", "Opsi C / Pernyataan 3", "Opsi D / Pernyataan 4", "Opsi E / Pernyataan 5",
-            "Kunci Jawaban", "Bobot Poin", "Pembahasan"
+            "Kunci Jawaban", "Bobot Poin", "Pembahasan", "Durasi Soal (Detik)"
         ];
 
         const rows = [headers];
@@ -1344,7 +1378,8 @@ function downloadQuestionsAsExcel(questionsList, examTitle) {
                 optTexts[4],
                 keyStr,
                 Number(q.score || 10),
-                q.explanation || ''
+                q.explanation || '',
+                q.durationSeconds || ''
             ]);
         });
 
@@ -1352,7 +1387,7 @@ function downloadQuestionsAsExcel(questionsList, examTitle) {
         ws['!cols'] = [
             { wch: 10 }, { wch: 22 }, { wch: 45 }, { wch: 30 }, { wch: 25 },
             { wch: 25 }, { wch: 25 }, { wch: 25 }, { wch: 25 }, { wch: 25 },
-            { wch: 15 }, { wch: 10 }, { wch: 25 }
+            { wch: 15 }, { wch: 10 }, { wch: 25 }, { wch: 18 }
         ];
 
         const wb = XLSX.utils.book_new();
@@ -2162,6 +2197,8 @@ const api = {
             description: e.description || '',
             instructions: e.instructions || '',
             durationMinutes: Number(e.durationMinutes || 60),
+            enableQuestionTimer: Boolean(e.enableQuestionTimer),
+            defaultQuestionDuration: Number(e.defaultQuestionDuration || 60),
             totalQuestions: (db.questions[e.examId] || []).length,
             kkm: Number(e.kkm || 75),
             maxAttempts: Number(e.maxAttempts || 1),
@@ -2223,6 +2260,7 @@ const api = {
             tfType: q.tfType || 'BENAR_SALAH',
             text: q.text,
             imageUrl: q.imageUrl || '',
+            durationSeconds: q.durationSeconds || null,
             options: (q.options || []).map(o => ({ id: o.id, text: o.text, imageUrl: o.imageUrl || '' }))
         }));
 
@@ -2234,6 +2272,8 @@ const api = {
                 participantName: participantData.name,
                 className: participantData.className,
                 nis: participantData.nis,
+                enableQuestionTimer: Boolean(exam.enableQuestionTimer),
+                defaultQuestionDuration: Number(exam.defaultQuestionDuration || 60),
                 questions: sanitized
             }
         };
@@ -2785,6 +2825,7 @@ Router.addRoute('/dashboard', async () => {
             <tr style="border-bottom: 1px solid var(--border-color);">
                 <td class="py-3 px-4 font-medium">
                     <div style="line-height: 1.35;">${escapeHtml(e.title)}</div>
+                    ${e.enableQuestionTimer ? `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #d97706; font-size: 0.7rem; padding: 2px 6px; margin-top: 4px; display: inline-flex; align-items: center; gap: 3px;"><i class="ph ph-hourglass-medium"></i> Per Soal (${e.defaultQuestionDuration || 60}s)</span>` : ''}
                     ${isAdmin && e.ownerTeacherName ? `<div class="text-xs text-muted font-normal mt-0.5 flex items-center gap-1"><i class="ph ph-chalkboard-teacher"></i> ${escapeHtml(e.ownerTeacherName)}</div>` : ''}
                 </td>
                 <td class="py-3 px-4 text-sm">${escapeHtml(e.subject)} - ${escapeHtml(e.className)}</td>
@@ -2844,6 +2885,7 @@ Router.addRoute('/dashboard', async () => {
                             <span class="meta-tag"><i class="ph ph-book-open"></i> ${escapeHtml(e.subject)}</span>
                             <span class="meta-tag"><i class="ph ph-chalkboard-teacher"></i> ${escapeHtml(e.className)}</span>
                             <span class="meta-tag"><i class="ph ph-users"></i> ${e.participantCount} Peserta</span>
+                            ${e.enableQuestionTimer ? `<span class="meta-tag" style="background: rgba(245, 158, 11, 0.15); color: #d97706;"><i class="ph ph-hourglass-medium"></i> Per Soal (${e.defaultQuestionDuration || 60}s)</span>` : ''}
                         </div>
                     </div>
                     <div>
@@ -3349,7 +3391,8 @@ Router.addRoute('/exam-editor', async (params) => {
     let exam = {
         title: '', subject: '', material: '', className: '',
         durationMinutes: 60, kkm: 75, maxAttempts: 1, attemptScoring: 'HIGHEST',
-        randomizeQuestions: false, randomizeOptions: false, showResult: true, status: 'DRAFT'
+        randomizeQuestions: false, randomizeOptions: false, showResult: true, status: 'DRAFT',
+        enableQuestionTimer: false, defaultQuestionDuration: 60
     };
     
     let isEdit = false;
@@ -3430,7 +3473,7 @@ Router.addRoute('/exam-editor', async (params) => {
                             </div>
                             
                             <div class="input-group">
-                                <label class="input-label" for="durationMinutes">Durasi (Menit) <span class="text-error">*</span></label>
+                                <label class="input-label" for="durationMinutes">Durasi Total Ujian (Menit) <span class="text-error">*</span></label>
                                 <input type="number" id="durationMinutes" class="input-control" value="${exam.durationMinutes}" min="1" required>
                             </div>
                             
@@ -3460,6 +3503,34 @@ Router.addRoute('/exam-editor', async (params) => {
                                     <option value="ACTIVE" ${exam.status === 'ACTIVE' ? 'selected' : ''}>ACTIVE (Dapat Dikerjakan)</option>
                                     <option value="INACTIVE" ${exam.status === 'INACTIVE' ? 'selected' : ''}>INACTIVE (Ditutup)</option>
                                 </select>
+                            </div>
+                        </div>
+
+                        <!-- Pengaturan Waktu Per Soal (Opsional) -->
+                        <div class="p-3.5 mt-4 mb-4" style="background: var(--bg-base); border-radius: var(--radius-md); border: 1px solid var(--border-color);">
+                            <label class="flex items-start gap-2.5" style="cursor: pointer;">
+                                <input type="checkbox" id="enableQuestionTimer" ${exam.enableQuestionTimer ? 'checked' : ''} onchange="toggleQuestionTimerSetting(this.checked)" style="width: 1.15rem; height: 1.15rem; margin-top: 2px; accent-color: var(--primary-600); cursor: pointer;">
+                                <div style="flex: 1;">
+                                    <span class="font-bold text-sm block" style="color: var(--text-primary);">
+                                        <i class="ph ph-timer text-primary"></i> Waktu Pengerjaan Tersendiri Per Soal (Opsional)
+                                    </span>
+                                    <span class="text-xs text-muted block mt-0.5" style="line-height: 1.45;">
+                                        Jika diaktifkan, tiap soal akan memiliki batas waktu countdown tersendiri dan otomatis berpindah ke soal berikutnya saat waktu habis. Anda juga dapat menentukan waktu berbeda untuk masing-masing soal di halaman <strong>Kelola Soal</strong>.
+                                    </span>
+                                </div>
+                            </label>
+
+                            <div id="questionDurationGroup" style="display: ${exam.enableQuestionTimer ? 'block' : 'none'}; margin-top: 0.85rem; padding-top: 0.85rem; border-top: 1px dashed var(--border-color);">
+                                <label class="input-label" for="defaultQuestionDuration" style="font-size: 0.85rem;">
+                                    Durasi Default Tiap Soal (Detik) <span class="text-error">*</span>
+                                </label>
+                                <div class="flex items-center gap-2">
+                                    <input type="number" id="defaultQuestionDuration" class="input-control" value="${exam.defaultQuestionDuration || 60}" min="5" style="max-width: 130px; font-weight: 600;">
+                                    <span class="text-xs text-muted">detik per soal (contoh: 60 = 1 menit, 90 = 1,5 menit, 120 = 2 menit)</span>
+                                </div>
+                                <div class="text-xs mt-1.5" style="color: var(--primary-700);">
+                                    <i class="ph ph-info"></i> Durasi tiap soal bisa diatur secara khusus di halaman <strong>Kelola Soal</strong>. Jika tidak diubah, maka soal akan memakai durasi default di atas.
+                                </div>
                             </div>
                         </div>
 
@@ -3495,6 +3566,13 @@ Router.addRoute('/exam-editor', async (params) => {
     `;
 });
 
+window.toggleQuestionTimerSetting = function(checked) {
+    const group = document.getElementById('questionDurationGroup');
+    if (group) {
+        group.style.display = checked ? 'block' : 'none';
+    }
+};
+
 window.handleSaveExam = async function(event) {
     event.preventDefault();
     const btn = document.getElementById('saveExamBtn');
@@ -3503,6 +3581,9 @@ window.handleSaveExam = async function(event) {
 
     const params = new URLSearchParams(window.location.hash.split('?')[1] || '');
     const examId = params.get('id');
+
+    const enableQuestionTimer = Boolean(document.getElementById('enableQuestionTimer')?.checked);
+    const defaultQuestionDuration = Number(document.getElementById('defaultQuestionDuration')?.value || 60);
 
     const examData = {
         examId: examId || undefined,
@@ -3519,6 +3600,8 @@ window.handleSaveExam = async function(event) {
         status: document.getElementById('status').value,
         dateStart: document.getElementById('dateStart').value,
         dateEnd: document.getElementById('dateEnd').value,
+        enableQuestionTimer: enableQuestionTimer,
+        defaultQuestionDuration: defaultQuestionDuration,
         randomizeQuestions: document.getElementById('randomizeQuestions').checked,
         randomizeOptions: document.getElementById('randomizeOptions').checked,
         showResult: document.getElementById('showResult').checked
@@ -3556,14 +3639,21 @@ Router.addRoute('/question-builder', async (params) => {
     }
 
     let questions = [];
+    let exam = null;
     try {
-        const res = await api.getQuestions(AppState.user.sessionId, examId);
+        const [res, examRes] = await Promise.all([
+            api.getQuestions(AppState.user.sessionId, examId),
+            api.getExam(AppState.user.sessionId, examId)
+        ]);
         if (res.success && Array.isArray(res.data)) {
             questions = res.data;
         } else {
             UI.showToast(res.message || 'Akses ditolak atau gagal memuat soal.', 'error');
             setTimeout(() => Router.navigate('/dashboard'), 0);
             return `<div class="loading-full">Mengalihkan...</div>`;
+        }
+        if (examRes && examRes.success && examRes.data) {
+            exam = examRes.data;
         }
     } catch (e) {
         console.error("Error loading questions:", e);
@@ -3580,6 +3670,7 @@ Router.addRoute('/question-builder', async (params) => {
             bottomText: '',
             imageUrl: '',
             score: 10,
+            durationSeconds: null,
             options: [],
             correctAnswer: null,
             scoringMethod: 'EXACT'
@@ -4105,9 +4196,20 @@ Router.addRoute('/question-builder', async (params) => {
                                               oninput="updateQuestionField(${qIndex}, 'bottomText', this.value)">${escapeHtml(q.bottomText || '')}</textarea>
                                 </div>
                             </div>
-                            <div>
+                            <div style="min-width: 140px;">
                                 <label class="input-label text-xs">Skor / Poin</label>
                                 <input type="number" class="input-control mb-2" value="${q.score}" oninput="updateQuestionField(${qIndex}, 'score', Number(this.value || 10))">
+                                
+                                <label class="input-label text-xs mt-1 flex items-center justify-between" style="gap: 4px;">
+                                    <span><i class="ph ph-timer"></i> Waktu (Detik)</span>
+                                    ${exam && exam.enableQuestionTimer ? '<span class="badge badge-timer-warning" style="font-size:0.65rem; padding: 1px 5px; line-height: 1.2;">Per Soal</span>' : '<span class="text-2xs text-muted" style="font-size:0.68rem;">Detik</span>'}
+                                </label>
+                                <input type="number" class="input-control mb-2" min="1" 
+                                       placeholder="${exam && exam.enableQuestionTimer ? `Default (${exam.defaultQuestionDuration || 60}s)` : 'Ikut Ujian'}" 
+                                       value="${(q.durationSeconds !== undefined && q.durationSeconds !== null && q.durationSeconds !== '') ? q.durationSeconds : ''}" 
+                                       oninput="updateQuestionField(${qIndex}, 'durationSeconds', this.value ? Number(this.value) : null)"
+                                       title="Durasi pengerjaan spesifik soal ini dalam detik. Kosongkan untuk menggunakan durasi default ujian.">
+
                                 ${(q.type === 'MCQ_COMPLEX' || q.type === 'TRUE_FALSE') ? `
                                     <label class="input-label text-xs mt-2">Metode Penilaian</label>
                                     <select class="input-control text-sm" onchange="updateQuestionField(${qIndex}, 'scoringMethod', this.value)">
@@ -4130,6 +4232,30 @@ Router.addRoute('/question-builder', async (params) => {
                     </div>
                 `;
             }).join('');
+        }
+
+        let timerBannerHtml = '';
+        if (exam && exam.enableQuestionTimer) {
+            timerBannerHtml = `
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--radius-md); padding: 0.85rem 1.15rem; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; box-shadow: var(--shadow-sm);">
+                    <div class="flex items-center gap-2.5">
+                        <span style="background: #2563eb; color: white; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0;">
+                            <i class="ph ph-timer"></i>
+                        </span>
+                        <div>
+                            <div class="font-bold text-sm" style="color: #1e40af;">
+                                Mode Waktu Pengerjaan Per Soal Aktif
+                            </div>
+                            <div class="text-xs" style="color: #2563eb; margin-top: 2px;">
+                                Durasi default ujian: <strong>${exam.defaultQuestionDuration || 60} detik</strong> per soal. Anda dapat menentukan waktu khusus untuk tiap soal pada kolom <em>"Waktu (Detik)"</em>.
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="Router.navigate('/exam-editor?id=${exam.examId}')" style="font-size: 0.78rem; padding: 0.35rem 0.75rem; background: #ffffff;">
+                        <i class="ph ph-gear"></i> Pengaturan Ujian
+                    </button>
+                </div>
+            `;
         }
 
         // Always append the Bottom Add Card directly below the questions!
@@ -4158,7 +4284,7 @@ Router.addRoute('/question-builder', async (params) => {
             </div>
         `;
 
-        container.innerHTML = cardsHtml + bottomAddCardHtml;
+        container.innerHTML = timerBannerHtml + cardsHtml + bottomAddCardHtml;
     };
 
     // ========================================================================
@@ -4366,6 +4492,10 @@ Router.addRoute('/question-builder', async (params) => {
                     ['pembahasan', 'penjelasan', 'keterangan', 'explanation'], 
                     ['pembahasan', 'penjelasan', 'keterangan']
                 );
+                const colDuration = getCol(
+                    ['durasi soal', 'durasi (detik)', 'durasi detik', 'waktu soal', 'waktu (detik)', 'durasi', 'duration'], 
+                    ['durasi', 'waktu']
+                );
 
                 // Safety guard: colText and colType must NEVER be the same column
                 if (colText === colType || colText === -1) {
@@ -4426,6 +4556,8 @@ Router.addRoute('/question-builder', async (params) => {
                     const rawKey = getVal(colKey, hasExplicitImgCol ? 9 : 8) || 'A';
                     const score = Number(getVal(colScore, hasExplicitImgCol ? 10 : 9)) || 10;
                     const explanation = getVal(colExp, hasExplicitImgCol ? 11 : 10);
+                    const rawDuration = colDuration !== -1 ? Number(getVal(colDuration, -1)) : null;
+                    const durationSeconds = (rawDuration && !isNaN(rawDuration) && rawDuration > 0) ? rawDuration : null;
 
                     let options = [];
                     let correctAnswer = null;
@@ -4506,6 +4638,7 @@ Router.addRoute('/question-builder', async (params) => {
                         bottomText: bottomText,
                         imageUrl: formatDirectImageUrl(rawImg),
                         score: score,
+                        durationSeconds: durationSeconds,
                         options: options,
                         correctAnswer: correctAnswer,
                         scoringMethod: 'EXACT',
@@ -5343,7 +5476,7 @@ Router.addRoute('/results', renderTeacherResults);
                             </div>
                             <div class="flex items-center gap-1.5 text-secondary overflow-hidden">
                                 <i class="ph ph-clock text-primary" style="font-size: 1rem; flex-shrink: 0;"></i>
-                                <span class="truncate">Durasi: <strong>${exam.durationMinutes || 60}m</strong></span>
+                                <span class="truncate">Durasi: <strong>${exam.enableQuestionTimer ? 'Per Soal' : `${exam.durationMinutes || 60}m`}</strong></span>
                             </div>
                             <div class="flex items-center gap-1.5 text-secondary overflow-hidden">
                                 <i class="ph ph-list-numbers text-primary" style="font-size: 1rem; flex-shrink: 0;"></i>
@@ -5628,8 +5761,18 @@ Router.addRoute('/student/landing', async (params) => {
                     </div>
                     <div class="flex justify-between">
                         <span class="text-sm font-semibold text-secondary">Waktu Pengerjaan</span>
-                        <span class="text-sm font-bold text-primary">${exam.durationMinutes} Menit</span>
+                        <span class="text-sm font-bold text-primary">${exam.enableQuestionTimer ? 'Batas Waktu Per Soal' : `${exam.durationMinutes} Menit`}</span>
                     </div>
+                    ${exam.enableQuestionTimer ? `
+                        <div class="flex justify-between mt-2 pt-2" style="border-top: 1px dashed var(--primary-200);">
+                            <span class="text-sm font-semibold text-secondary flex items-center gap-1">
+                                <i class="ph ph-timer" style="color: #d97706;"></i> Mode Timer
+                            </span>
+                            <span class="badge badge-timer-warning" style="font-size: 0.76rem; padding: 2px 8px;">
+                                Waktu Per Soal (${exam.defaultQuestionDuration || 60}s)
+                            </span>
+                        </div>
+                    ` : ''}
                     ${exam.description ? `
                     <div class="mt-4 pt-4" style="border-top: 1px solid var(--primary-200);">
                         <span class="text-sm font-semibold text-secondary block mb-1">Deskripsi</span>
@@ -5707,9 +5850,14 @@ window.handleStartExam = async function(event) {
         const res = await api.startExamAttempt(examId, { name, className, nis });
         
         if (res.success && res.data) {
+            const mergedExam = {
+                ...AppState.currentExam,
+                enableQuestionTimer: (res.data.enableQuestionTimer !== undefined) ? res.data.enableQuestionTimer : AppState.currentExam.enableQuestionTimer,
+                defaultQuestionDuration: res.data.defaultQuestionDuration || AppState.currentExam.defaultQuestionDuration || 60
+            };
             AppState.update({ 
                 mode: 'student',
-                currentExam: AppState.currentExam,
+                currentExam: mergedExam,
                 attempt: res.data,
                 questions: res.data.questions,
                 answers: {}
@@ -5717,7 +5865,7 @@ window.handleStartExam = async function(event) {
             try {
                 localStorage.setItem('cbt_active_exam_session', JSON.stringify({
                     mode: 'student',
-                    currentExam: AppState.currentExam,
+                    currentExam: mergedExam,
                     attempt: res.data,
                     questions: res.data.questions
                 }));
@@ -5763,12 +5911,35 @@ Router.addRoute('/student/exam', async () => {
         return `<div class="loading-full">Mengalihkan...</div>`;
     }
 
-    const exam = AppState.currentExam;
+    const exam = AppState.currentExam || {};
     const questions = AppState.questions || [];
     let currentIndex = 0; // Local state for pagination
 
+    const isQuestionTimerEnabled = Boolean(
+        exam.enableQuestionTimer ||
+        (AppState.attempt && AppState.attempt.enableQuestionTimer)
+    );
+    const defaultQDuration = Number(
+        exam.defaultQuestionDuration ||
+        (AppState.attempt && AppState.attempt.defaultQuestionDuration) ||
+        60
+    );
+
     // Restore locally saved answers from localStorage if available
     const attemptId = AppState.attempt ? AppState.attempt.attemptId : null;
+
+    if (isQuestionTimerEnabled && attemptId) {
+        try {
+            const savedIdx = localStorage.getItem('cbt_cur_idx_' + attemptId);
+            if (savedIdx !== null) {
+                const parsedIdx = parseInt(savedIdx, 10);
+                if (!isNaN(parsedIdx) && parsedIdx >= 0 && parsedIdx < questions.length) {
+                    currentIndex = parsedIdx;
+                }
+            }
+        } catch (e) {}
+    }
+
     if (attemptId) {
         try {
             const cachedAnswers = localStorage.getItem('cbt_ans_' + attemptId);
@@ -5782,6 +5953,70 @@ Router.addRoute('/student/exam', async () => {
             console.warn("Failed to load local cached answers:", e);
         }
     }
+
+    // Per-question timer helper methods
+    const getQuestionDurationSeconds = (idx) => {
+        const q = questions[idx];
+        if (q && q.durationSeconds && Number(q.durationSeconds) > 0) {
+            return Number(q.durationSeconds);
+        }
+        return defaultQDuration;
+    };
+
+    const getQuestionTimeRemaining = (idx) => {
+        if (!attemptId) return getQuestionDurationSeconds(idx);
+        const totalSec = getQuestionDurationSeconds(idx);
+        const startKey = 'cbt_qstart_' + attemptId + '_' + idx;
+        let startTimeStr = localStorage.getItem(startKey);
+        if (!startTimeStr) {
+            const now = Date.now();
+            localStorage.setItem(startKey, String(now));
+            return totalSec;
+        }
+        const startTime = parseInt(startTimeStr, 10);
+        const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+        return Math.max(0, totalSec - elapsedSec);
+    };
+
+    const markQuestionExpired = (idx) => {
+        if (!attemptId) return;
+        const totalSec = getQuestionDurationSeconds(idx);
+        localStorage.setItem('cbt_qstart_' + attemptId + '_' + idx, String(Date.now() - (totalSec + 10) * 1000));
+        try {
+            const compStr = localStorage.getItem('cbt_qdone_' + attemptId) || '[]';
+            const compArr = JSON.parse(compStr);
+            if (!compArr.includes(idx)) {
+                compArr.push(idx);
+                localStorage.setItem('cbt_qdone_' + attemptId, JSON.stringify(compArr));
+            }
+        } catch (e) {}
+    };
+
+    const isQuestionExpired = (idx) => {
+        if (!attemptId) return false;
+        try {
+            const compStr = localStorage.getItem('cbt_qdone_' + attemptId) || '[]';
+            const compArr = JSON.parse(compStr);
+            if (compArr.includes(idx)) return true;
+        } catch (e) {}
+        const startKey = 'cbt_qstart_' + attemptId + '_' + idx;
+        const startTimeStr = localStorage.getItem(startKey);
+        if (!startTimeStr) return false;
+        const startTime = parseInt(startTimeStr, 10);
+        const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+        return elapsedSec >= getQuestionDurationSeconds(idx);
+    };
+
+    window.confirmNextQuestion = function(currIdx, isLast) {
+        if (isLast) {
+            submitExam();
+            return;
+        }
+        if (isQuestionTimerEnabled) {
+            markQuestionExpired(currIdx);
+        }
+        renderQuestion(currIdx + 1);
+    };
 
     // --- ANTI-CHEAT & PROCTORING ENGINE (Tab & App Switch Detection) ---
     let tabSwitchCount = 0;
@@ -5921,6 +6156,32 @@ Router.addRoute('/student/exam', async () => {
     // Helper to render question
     window.renderQuestion = function(index) {
         currentIndex = index;
+
+        if (window._cbtQTimerInterval) {
+            clearInterval(window._cbtQTimerInterval);
+            window._cbtQTimerInterval = null;
+        }
+
+        if (isQuestionTimerEnabled) {
+            try {
+                if (attemptId) localStorage.setItem('cbt_cur_idx_' + attemptId, String(index));
+            } catch (e) {}
+
+            let qRemaining = getQuestionTimeRemaining(index);
+
+            // If this question's time already expired, skip to next or submit
+            if (qRemaining <= 0) {
+                markQuestionExpired(index);
+                if (index < questions.length - 1) {
+                    renderQuestion(index + 1);
+                    return;
+                } else {
+                    executeSubmit();
+                    return;
+                }
+            }
+        }
+
         const q = questions[index];
         const answers = AppState.answers[q.id] || [];
         
@@ -5966,7 +6227,7 @@ Router.addRoute('/student/exam', async () => {
                                 return `
                                     <tr style="border-bottom: 1px solid var(--border-color); background: ${sIdx % 2 === 0 ? '#ffffff' : 'var(--bg-base)'};">
                                         <td style="padding: 12px 16px; vertical-align: middle; line-height: 1.5; color: var(--text-primary); font-weight: 500;">
-                                            ${escapeHtml(opt.text)}
+                                             ${escapeHtml(opt.text)}
                                         </td>
                                         <td style="padding: 12px 14px; text-align: center; vertical-align: middle;">
                                             <label style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; cursor: pointer; margin: 0;" title="${tfLabels.positive}">
@@ -6006,29 +6267,51 @@ Router.addRoute('/student/exam', async () => {
             }).join('');
         }
 
-        const navHtml = `
-            <div class="flex justify-between items-center mt-6 pt-4" style="border-top: 1px solid var(--border-color); gap: 0.5rem; width: 100%;">
-                <button class="btn btn-secondary justify-center" style="flex: 1; max-width: 150px;" onclick="renderQuestion(${index - 1})" ${index === 0 ? 'disabled' : ''}>
-                    <i class="ph ph-caret-left"></i> Sebelumnya
-                </button>
-                ${index === questions.length - 1 
-                    ? `<button class="btn btn-primary justify-center" style="flex: 1; max-width: 200px;" onclick="submitExam()">Kumpulkan <i class="ph ph-check"></i></button>`
-                    : `<button class="btn btn-primary justify-center" style="flex: 1; max-width: 160px;" onclick="renderQuestion(${index + 1})">Selanjutnya <i class="ph ph-caret-right"></i></button>`
-                }
-            </div>
-        `;
+        let navHtml = '';
+        if (isQuestionTimerEnabled) {
+            navHtml = `
+                <div class="flex justify-between items-center mt-6 pt-4" style="border-top: 1px solid var(--border-color); gap: 0.5rem; width: 100%;">
+                    <button class="btn btn-secondary justify-center" style="flex: 1; max-width: 150px; opacity: 0.45; cursor: not-allowed;" disabled title="Waktu pengerjaan soal sebelumnya telah selesai">
+                        <i class="ph ph-lock"></i> Sebelumnya
+                    </button>
+                    ${index === questions.length - 1 
+                        ? `<button class="btn btn-primary justify-center" style="flex: 1; max-width: 200px;" onclick="confirmNextQuestion(${index}, true)">Kumpulkan <i class="ph ph-check"></i></button>`
+                        : `<button class="btn btn-primary justify-center" style="flex: 1; max-width: 180px;" onclick="confirmNextQuestion(${index}, false)">Lanjut Soal ${index + 2} <i class="ph ph-caret-right"></i></button>`
+                    }
+                </div>
+            `;
+        } else {
+            navHtml = `
+                <div class="flex justify-between items-center mt-6 pt-4" style="border-top: 1px solid var(--border-color); gap: 0.5rem; width: 100%;">
+                    <button class="btn btn-secondary justify-center" style="flex: 1; max-width: 150px;" onclick="renderQuestion(${index - 1})" ${index === 0 ? 'disabled' : ''}>
+                        <i class="ph ph-caret-left"></i> Sebelumnya
+                    </button>
+                    ${index === questions.length - 1 
+                        ? `<button class="btn btn-primary justify-center" style="flex: 1; max-width: 200px;" onclick="submitExam()">Kumpulkan <i class="ph ph-check"></i></button>`
+                        : `<button class="btn btn-primary justify-center" style="flex: 1; max-width: 160px;" onclick="renderQuestion(${index + 1})">Selanjutnya <i class="ph ph-caret-right"></i></button>`
+                    }
+                </div>
+            `;
+        }
 
         const typeBadge = q.type === 'MCQ' ? 'Pilihan Ganda' : (q.type === 'TRUE_FALSE' ? getTfLabels(q.tfType).name : 'Ganda Kompleks');
         const qImg = q.imageUrl || q.questionImageUrl || '';
         const formattedQImg = formatDirectImageUrl(qImg);
 
         document.getElementById('questionContainer').innerHTML = `
-            <div class="flex justify-between items-center mb-3 pb-2" style="border-bottom: 1px solid var(--border-color); gap: 0.5rem;">
+            <div class="flex justify-between items-center mb-3 pb-2" style="border-bottom: 1px solid var(--border-color); gap: 0.5rem; flex-wrap: wrap;">
                 <div class="flex items-center gap-2">
                     <span class="badge badge-active font-semibold">Soal ${index + 1} dari ${questions.length}</span>
                     <span class="badge text-xs" style="background: var(--bg-base);">${typeBadge}</span>
+                    <span class="text-xs text-muted font-bold ml-1">${q.score || 10} Poin</span>
                 </div>
-                <span class="text-xs text-muted font-bold">${q.score || 10} Poin</span>
+                <div class="flex items-center gap-2">
+                    ${isQuestionTimerEnabled ? `
+                        <span id="qTimerBadge" class="badge badge-timer-warning">
+                            <i class="ph ph-clock-countdown"></i> Sisa Waktu Soal: <strong id="qTimerBadgeText">--:--</strong>
+                        </span>
+                    ` : ''}
+                </div>
             </div>
             <div class="text-base sm:text-lg font-medium mb-4" style="line-height: 1.6; word-break: break-word; overflow-wrap: anywhere; color: var(--text-primary);">
                 ${escapeHtml(q.text)}
@@ -6055,6 +6338,58 @@ Router.addRoute('/student/exam', async () => {
         `;
         
         updateProgress();
+
+        if (isQuestionTimerEnabled) {
+            const updateQTimerUI = (sec) => {
+                const m = Math.floor(sec / 60);
+                const s = sec % 60;
+                const fmt = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                
+                const headerTimer = document.getElementById('questionTimerText');
+                if (headerTimer) {
+                    headerTimer.textContent = fmt;
+                    headerTimer.style.color = (sec <= 10) ? '#dc2626' : '#b45309';
+                }
+
+                const badgeText = document.getElementById('qTimerBadgeText');
+                const badge = document.getElementById('qTimerBadge');
+                if (badgeText) badgeText.textContent = fmt;
+                if (badge) {
+                    if (sec <= 10) {
+                        badge.className = 'badge badge-timer-danger pulse-timer';
+                    } else {
+                        badge.className = 'badge badge-timer-warning';
+                    }
+                }
+            };
+
+            let currentSec = getQuestionTimeRemaining(index);
+            updateQTimerUI(currentSec);
+
+            window._cbtQTimerInterval = setInterval(() => {
+                const remaining = getQuestionTimeRemaining(index);
+                updateQTimerUI(remaining);
+
+                if (remaining <= 0) {
+                    clearInterval(window._cbtQTimerInterval);
+                    window._cbtQTimerInterval = null;
+                    persistLocalAnswer();
+                    triggerCloudSync();
+                    markQuestionExpired(index);
+                    UI.showToast(`Waktu pengerjaan Soal ${index + 1} telah habis!`, 'warning');
+                    
+                    if (index < questions.length - 1) {
+                        setTimeout(() => {
+                            renderQuestion(index + 1);
+                        }, 350);
+                    } else {
+                        setTimeout(() => {
+                            executeSubmit();
+                        }, 350);
+                    }
+                }
+            }, 1000);
+        }
     };
 
     let hasPendingCloudSync = false;
@@ -6157,15 +6492,42 @@ Router.addRoute('/student/exam', async () => {
             }
             const isCurrent = idx === currentIndex;
             
-            let bg = hasAnswer ? 'var(--primary-500)' : 'var(--bg-base)';
-            let color = hasAnswer ? 'white' : 'var(--text-secondary)';
-            let border = isCurrent ? '2px solid var(--primary-600)' : '1px solid var(--border-color)';
-            
-            if(isCurrent && !hasAnswer) {
-                bg = 'var(--primary-100)';
-            }
+            if (isQuestionTimerEnabled) {
+                const isPassed = idx < currentIndex || isQuestionExpired(idx);
+                const isUpcoming = idx > currentIndex;
+                
+                let bg = 'var(--bg-base)';
+                let color = 'var(--text-secondary)';
+                let border = '1px solid var(--border-color)';
+                let opacity = '1';
 
-            return `<button onclick="renderQuestion(${idx})" style="width: 2.5rem; height: 2.5rem; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-md); background: ${bg}; color: ${color}; border: ${border}; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.2s;">${idx + 1}</button>`;
+                if (isCurrent) {
+                    bg = hasAnswer ? 'var(--primary-600)' : 'var(--primary-100)';
+                    color = hasAnswer ? '#ffffff' : 'var(--primary-800)';
+                    border = '2px solid var(--primary-600)';
+                } else if (isPassed) {
+                    bg = hasAnswer ? 'rgba(16, 185, 129, 0.15)' : '#f1f5f9';
+                    color = hasAnswer ? '#047857' : '#94a3b8';
+                    border = hasAnswer ? '1px solid #10b981' : '1px dashed #cbd5e1';
+                } else {
+                    bg = 'var(--bg-base)';
+                    color = 'var(--text-muted)';
+                    border = '1px solid var(--border-color)';
+                    opacity = '0.55';
+                }
+
+                return `<button style="width: 2.5rem; height: 2.5rem; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-md); background: ${bg}; color: ${color}; border: ${border}; opacity: ${opacity}; font-size: 0.875rem; font-weight: 600; cursor: default; transition: all 0.2s;" disabled title="${isCurrent ? 'Soal Aktif' : (isPassed ? 'Waktu Selesai' : 'Belum Terbuka')}">${isPassed && hasAnswer ? `<i class="ph ph-check" style="font-size:0.9rem;"></i>` : (idx + 1)}</button>`;
+            } else {
+                let bg = hasAnswer ? 'var(--primary-500)' : 'var(--bg-base)';
+                let color = hasAnswer ? 'white' : 'var(--text-secondary)';
+                let border = isCurrent ? '2px solid var(--primary-600)' : '1px solid var(--border-color)';
+                
+                if(isCurrent && !hasAnswer) {
+                    bg = 'var(--primary-100)';
+                }
+
+                return `<button onclick="renderQuestion(${idx})" style="width: 2.5rem; height: 2.5rem; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-md); background: ${bg}; color: ${color}; border: ${border}; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.2s;">${idx + 1}</button>`;
+            }
         }).join('');
         document.getElementById('progressGrid').innerHTML = gridHtml;
     };
@@ -6191,6 +6553,10 @@ Router.addRoute('/student/exam', async () => {
             window._cleanupExamProctor = null;
         }
         if (AppState.timer) clearInterval(AppState.timer);
+        if (window._cbtQTimerInterval) {
+            clearInterval(window._cbtQTimerInterval);
+            window._cbtQTimerInterval = null;
+        }
         if (window._cbtCloudSyncInterval) {
             clearInterval(window._cbtCloudSyncInterval);
             window._cbtCloudSyncInterval = null;
@@ -6205,6 +6571,7 @@ Router.addRoute('/student/exam', async () => {
                     localStorage.removeItem('cbt_active_exam_session');
                     localStorage.removeItem('cbt_ans_' + AppState.attempt.attemptId);
                     localStorage.removeItem('cbt_switch_' + AppState.attempt.attemptId);
+                    localStorage.removeItem('cbt_cur_idx_' + AppState.attempt.attemptId);
                     localStorage.setItem('cbt_last_result', JSON.stringify({
                         attempt: { ...AppState.attempt, ...res.data, status: 'SUBMITTED' },
                         currentExam: AppState.currentExam
@@ -6228,7 +6595,7 @@ Router.addRoute('/student/exam', async () => {
         }
     };
 
-    // Timer Logic
+    // Timer Logic for Total Exam
     const updateTimer = () => {
         const now = Date.now();
         const diff = AppState.attempt.deadlineAt - now;
@@ -6254,7 +6621,7 @@ Router.addRoute('/student/exam', async () => {
     // Initial Render Hook
     document.addEventListener('viewRendered', function onRender(e) {
         if (e.detail.path === '/student/exam') {
-            renderQuestion(0);
+            renderQuestion(currentIndex);
             updateTimer();
             document.removeEventListener('viewRendered', onRender);
         }
@@ -6273,10 +6640,20 @@ Router.addRoute('/student/exam', async () => {
                         <div id="autosaveIndicator" class="text-xs font-medium flex items-center gap-1" style="color: var(--text-secondary); white-space: nowrap;">
                             <i class="ph ph-check text-success"></i> <span class="hidden sm-inline">Tersimpan di perangkat</span><span class="sm-hidden">Tersimpan</span>
                         </div>
-                        <div class="card flex items-center gap-1.5" style="padding: 0.35rem 0.65rem; border-color: var(--primary-200); background: var(--primary-50);">
-                            <i class="ph ph-timer text-primary"></i>
-                            <span id="examTimer" class="font-bold" style="font-size: 1.05rem; font-family: monospace;">--:--</span>
-                        </div>
+                        ${isQuestionTimerEnabled ? `
+                            <div class="card flex items-center gap-1.5" id="questionTimerCard" style="padding: 0.35rem 0.65rem; border-color: #fde68a; background: #fffbeb;" title="Waktu untuk soal saat ini">
+                                <i class="ph ph-hourglass-high" style="color: #d97706; font-size: 1.1rem;"></i>
+                                <div class="flex flex-col" style="line-height: 1;">
+                                    <span class="text-2xs font-bold" style="color: #92400e; font-size: 0.65rem; text-transform: uppercase;">Waktu Soal</span>
+                                    <span id="questionTimerText" class="font-bold" style="font-size: 1.05rem; font-family: monospace; color: #b45309;">--:--</span>
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="card flex items-center gap-1.5" style="padding: 0.35rem 0.65rem; border-color: var(--primary-200); background: var(--primary-50);" title="Sisa waktu ujian">
+                                <i class="ph ph-timer text-primary"></i>
+                                <span id="examTimer" class="font-bold" style="font-size: 1.05rem; font-family: monospace;">--:--</span>
+                            </div>
+                        `}
                     </div>
                 </div>
             </div>

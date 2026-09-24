@@ -35,6 +35,7 @@ Router.addRoute('/dashboard', async () => {
             <tr style="border-bottom: 1px solid var(--border-color);">
                 <td class="py-3 px-4 font-medium">
                     <div style="line-height: 1.35;">${escapeHtml(e.title)}</div>
+                    ${e.enableQuestionTimer ? `<span class="badge" style="background: rgba(245, 158, 11, 0.15); color: #d97706; font-size: 0.7rem; padding: 2px 6px; margin-top: 4px; display: inline-flex; align-items: center; gap: 3px;"><i class="ph ph-hourglass-medium"></i> Per Soal (${e.defaultQuestionDuration || 60}s)</span>` : ''}
                     ${isAdmin && e.ownerTeacherName ? `<div class="text-xs text-muted font-normal mt-0.5 flex items-center gap-1"><i class="ph ph-chalkboard-teacher"></i> ${escapeHtml(e.ownerTeacherName)}</div>` : ''}
                 </td>
                 <td class="py-3 px-4 text-sm">${escapeHtml(e.subject)} - ${escapeHtml(e.className)}</td>
@@ -94,6 +95,7 @@ Router.addRoute('/dashboard', async () => {
                             <span class="meta-tag"><i class="ph ph-book-open"></i> ${escapeHtml(e.subject)}</span>
                             <span class="meta-tag"><i class="ph ph-chalkboard-teacher"></i> ${escapeHtml(e.className)}</span>
                             <span class="meta-tag"><i class="ph ph-users"></i> ${e.participantCount} Peserta</span>
+                            ${e.enableQuestionTimer ? `<span class="meta-tag" style="background: rgba(245, 158, 11, 0.15); color: #d97706;"><i class="ph ph-hourglass-medium"></i> Per Soal (${e.defaultQuestionDuration || 60}s)</span>` : ''}
                         </div>
                     </div>
                     <div>

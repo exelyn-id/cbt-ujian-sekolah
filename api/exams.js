@@ -93,6 +93,8 @@ module.exports = async function handler(req, res) {
                         participantName: p.name || p.participantName || 'Siswa',
                         className: p.className || 'Umum',
                         nis: p.nis || '',
+                        enableQuestionTimer: Boolean(exam.enableQuestionTimer),
+                        defaultQuestionDuration: Number(exam.defaultQuestionDuration || 60),
                         questions: exam.questions || []
                     }
                 });

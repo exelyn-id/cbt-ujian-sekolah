@@ -90,7 +90,7 @@
                             </div>
                             <div class="flex items-center gap-1.5 text-secondary overflow-hidden">
                                 <i class="ph ph-clock text-primary" style="font-size: 1rem; flex-shrink: 0;"></i>
-                                <span class="truncate">Durasi: <strong>${exam.durationMinutes || 60}m</strong></span>
+                                <span class="truncate">Durasi: <strong>${exam.enableQuestionTimer ? 'Per Soal' : `${exam.durationMinutes || 60}m`}</strong></span>
                             </div>
                             <div class="flex items-center gap-1.5 text-secondary overflow-hidden">
                                 <i class="ph ph-list-numbers text-primary" style="font-size: 1rem; flex-shrink: 0;"></i>

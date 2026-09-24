@@ -22,12 +22,35 @@ Router.addRoute('/student/exam', async () => {
         return `<div class="loading-full">Mengalihkan...</div>`;
     }
 
-    const exam = AppState.currentExam;
+    const exam = AppState.currentExam || {};
     const questions = AppState.questions || [];
     let currentIndex = 0; // Local state for pagination
 
+    const isQuestionTimerEnabled = Boolean(
+        exam.enableQuestionTimer ||
+        (AppState.attempt && AppState.attempt.enableQuestionTimer)
+    );
+    const defaultQDuration = Number(
+        exam.defaultQuestionDuration ||
+        (AppState.attempt && AppState.attempt.defaultQuestionDuration) ||
+        60
+    );
+
     // Restore locally saved answers from localStorage if available
     const attemptId = AppState.attempt ? AppState.attempt.attemptId : null;
+
+    if (isQuestionTimerEnabled && attemptId) {
+        try {
+            const savedIdx = localStorage.getItem('cbt_cur_idx_' + attemptId);
+            if (savedIdx !== null) {
+                const parsedIdx = parseInt(savedIdx, 10);
+                if (!isNaN(parsedIdx) && parsedIdx >= 0 && parsedIdx < questions.length) {
+                    currentIndex = parsedIdx;
+                }
+            }
+        } catch (e) {}
+    }
+
     if (attemptId) {
         try {
             const cachedAnswers = localStorage.getItem('cbt_ans_' + attemptId);
@@ -41,6 +64,70 @@ Router.addRoute('/student/exam', async () => {
             console.warn("Failed to load local cached answers:", e);
         }
     }
+
+    // Per-question timer helper methods
+    const getQuestionDurationSeconds = (idx) => {
+        const q = questions[idx];
+        if (q && q.durationSeconds && Number(q.durationSeconds) > 0) {
+            return Number(q.durationSeconds);
+        }
+        return defaultQDuration;
+    };
+
+    const getQuestionTimeRemaining = (idx) => {
+        if (!attemptId) return getQuestionDurationSeconds(idx);
+        const totalSec = getQuestionDurationSeconds(idx);
+        const startKey = 'cbt_qstart_' + attemptId + '_' + idx;
+        let startTimeStr = localStorage.getItem(startKey);
+        if (!startTimeStr) {
+            const now = Date.now();
+            localStorage.setItem(startKey, String(now));
+            return totalSec;
+        }
+        const startTime = parseInt(startTimeStr, 10);
+        const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+        return Math.max(0, totalSec - elapsedSec);
+    };
+
+    const markQuestionExpired = (idx) => {
+        if (!attemptId) return;
+        const totalSec = getQuestionDurationSeconds(idx);
+        localStorage.setItem('cbt_qstart_' + attemptId + '_' + idx, String(Date.now() - (totalSec + 10) * 1000));
+        try {
+            const compStr = localStorage.getItem('cbt_qdone_' + attemptId) || '[]';
+            const compArr = JSON.parse(compStr);
+            if (!compArr.includes(idx)) {
+                compArr.push(idx);
+                localStorage.setItem('cbt_qdone_' + attemptId, JSON.stringify(compArr));
+            }
+        } catch (e) {}
+    };
+
+    const isQuestionExpired = (idx) => {
+        if (!attemptId) return false;
+        try {
+            const compStr = localStorage.getItem('cbt_qdone_' + attemptId) || '[]';
+            const compArr = JSON.parse(compStr);
+            if (compArr.includes(idx)) return true;
+        } catch (e) {}
+        const startKey = 'cbt_qstart_' + attemptId + '_' + idx;
+        const startTimeStr = localStorage.getItem(startKey);
+        if (!startTimeStr) return false;
+        const startTime = parseInt(startTimeStr, 10);
+        const elapsedSec = Math.floor((Date.now() - startTime) / 1000);
+        return elapsedSec >= getQuestionDurationSeconds(idx);
+    };
+
+    window.confirmNextQuestion = function(currIdx, isLast) {
+        if (isLast) {
+            submitExam();
+            return;
+        }
+        if (isQuestionTimerEnabled) {
+            markQuestionExpired(currIdx);
+        }
+        renderQuestion(currIdx + 1);
+    };
 
     // --- ANTI-CHEAT & PROCTORING ENGINE (Tab & App Switch Detection) ---
     let tabSwitchCount = 0;
@@ -180,6 +267,32 @@ Router.addRoute('/student/exam', async () => {
     // Helper to render question
     window.renderQuestion = function(index) {
         currentIndex = index;
+
+        if (window._cbtQTimerInterval) {
+            clearInterval(window._cbtQTimerInterval);
+            window._cbtQTimerInterval = null;
+        }
+
+        if (isQuestionTimerEnabled) {
+            try {
+                if (attemptId) localStorage.setItem('cbt_cur_idx_' + attemptId, String(index));
+            } catch (e) {}
+
+            let qRemaining = getQuestionTimeRemaining(index);
+
+            // If this question's time already expired, skip to next or submit
+            if (qRemaining <= 0) {
+                markQuestionExpired(index);
+                if (index < questions.length - 1) {
+                    renderQuestion(index + 1);
+                    return;
+                } else {
+                    executeSubmit();
+                    return;
+                }
+            }
+        }
+
         const q = questions[index];
         const answers = AppState.answers[q.id] || [];
         
@@ -225,7 +338,7 @@ Router.addRoute('/student/exam', async () => {
                                 return `
                                     <tr style="border-bottom: 1px solid var(--border-color); background: ${sIdx % 2 === 0 ? '#ffffff' : 'var(--bg-base)'};">
                                         <td style="padding: 12px 16px; vertical-align: middle; line-height: 1.5; color: var(--text-primary); font-weight: 500;">
-                                            ${escapeHtml(opt.text)}
+                                             ${escapeHtml(opt.text)}
                                         </td>
                                         <td style="padding: 12px 14px; text-align: center; vertical-align: middle;">
                                             <label style="display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; cursor: pointer; margin: 0;" title="${tfLabels.positive}">
@@ -265,29 +378,51 @@ Router.addRoute('/student/exam', async () => {
             }).join('');
         }
 
-        const navHtml = `
-            <div class="flex justify-between items-center mt-6 pt-4" style="border-top: 1px solid var(--border-color); gap: 0.5rem; width: 100%;">
-                <button class="btn btn-secondary justify-center" style="flex: 1; max-width: 150px;" onclick="renderQuestion(${index - 1})" ${index === 0 ? 'disabled' : ''}>
-                    <i class="ph ph-caret-left"></i> Sebelumnya
-                </button>
-                ${index === questions.length - 1 
-                    ? `<button class="btn btn-primary justify-center" style="flex: 1; max-width: 200px;" onclick="submitExam()">Kumpulkan <i class="ph ph-check"></i></button>`
-                    : `<button class="btn btn-primary justify-center" style="flex: 1; max-width: 160px;" onclick="renderQuestion(${index + 1})">Selanjutnya <i class="ph ph-caret-right"></i></button>`
-                }
-            </div>
-        `;
+        let navHtml = '';
+        if (isQuestionTimerEnabled) {
+            navHtml = `
+                <div class="flex justify-between items-center mt-6 pt-4" style="border-top: 1px solid var(--border-color); gap: 0.5rem; width: 100%;">
+                    <button class="btn btn-secondary justify-center" style="flex: 1; max-width: 150px; opacity: 0.45; cursor: not-allowed;" disabled title="Waktu pengerjaan soal sebelumnya telah selesai">
+                        <i class="ph ph-lock"></i> Sebelumnya
+                    </button>
+                    ${index === questions.length - 1 
+                        ? `<button class="btn btn-primary justify-center" style="flex: 1; max-width: 200px;" onclick="confirmNextQuestion(${index}, true)">Kumpulkan <i class="ph ph-check"></i></button>`
+                        : `<button class="btn btn-primary justify-center" style="flex: 1; max-width: 180px;" onclick="confirmNextQuestion(${index}, false)">Lanjut Soal ${index + 2} <i class="ph ph-caret-right"></i></button>`
+                    }
+                </div>
+            `;
+        } else {
+            navHtml = `
+                <div class="flex justify-between items-center mt-6 pt-4" style="border-top: 1px solid var(--border-color); gap: 0.5rem; width: 100%;">
+                    <button class="btn btn-secondary justify-center" style="flex: 1; max-width: 150px;" onclick="renderQuestion(${index - 1})" ${index === 0 ? 'disabled' : ''}>
+                        <i class="ph ph-caret-left"></i> Sebelumnya
+                    </button>
+                    ${index === questions.length - 1 
+                        ? `<button class="btn btn-primary justify-center" style="flex: 1; max-width: 200px;" onclick="submitExam()">Kumpulkan <i class="ph ph-check"></i></button>`
+                        : `<button class="btn btn-primary justify-center" style="flex: 1; max-width: 160px;" onclick="renderQuestion(${index + 1})">Selanjutnya <i class="ph ph-caret-right"></i></button>`
+                    }
+                </div>
+            `;
+        }
 
         const typeBadge = q.type === 'MCQ' ? 'Pilihan Ganda' : (q.type === 'TRUE_FALSE' ? getTfLabels(q.tfType).name : 'Ganda Kompleks');
         const qImg = q.imageUrl || q.questionImageUrl || '';
         const formattedQImg = formatDirectImageUrl(qImg);
 
         document.getElementById('questionContainer').innerHTML = `
-            <div class="flex justify-between items-center mb-3 pb-2" style="border-bottom: 1px solid var(--border-color); gap: 0.5rem;">
+            <div class="flex justify-between items-center mb-3 pb-2" style="border-bottom: 1px solid var(--border-color); gap: 0.5rem; flex-wrap: wrap;">
                 <div class="flex items-center gap-2">
                     <span class="badge badge-active font-semibold">Soal ${index + 1} dari ${questions.length}</span>
                     <span class="badge text-xs" style="background: var(--bg-base);">${typeBadge}</span>
+                    <span class="text-xs text-muted font-bold ml-1">${q.score || 10} Poin</span>
                 </div>
-                <span class="text-xs text-muted font-bold">${q.score || 10} Poin</span>
+                <div class="flex items-center gap-2">
+                    ${isQuestionTimerEnabled ? `
+                        <span id="qTimerBadge" class="badge badge-timer-warning">
+                            <i class="ph ph-clock-countdown"></i> Sisa Waktu Soal: <strong id="qTimerBadgeText">--:--</strong>
+                        </span>
+                    ` : ''}
+                </div>
             </div>
             <div class="text-base sm:text-lg font-medium mb-4" style="line-height: 1.6; word-break: break-word; overflow-wrap: anywhere; color: var(--text-primary);">
                 ${escapeHtml(q.text)}
@@ -314,6 +449,58 @@ Router.addRoute('/student/exam', async () => {
         `;
         
         updateProgress();
+
+        if (isQuestionTimerEnabled) {
+            const updateQTimerUI = (sec) => {
+                const m = Math.floor(sec / 60);
+                const s = sec % 60;
+                const fmt = `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+                
+                const headerTimer = document.getElementById('questionTimerText');
+                if (headerTimer) {
+                    headerTimer.textContent = fmt;
+                    headerTimer.style.color = (sec <= 10) ? '#dc2626' : '#b45309';
+                }
+
+                const badgeText = document.getElementById('qTimerBadgeText');
+                const badge = document.getElementById('qTimerBadge');
+                if (badgeText) badgeText.textContent = fmt;
+                if (badge) {
+                    if (sec <= 10) {
+                        badge.className = 'badge badge-timer-danger pulse-timer';
+                    } else {
+                        badge.className = 'badge badge-timer-warning';
+                    }
+                }
+            };
+
+            let currentSec = getQuestionTimeRemaining(index);
+            updateQTimerUI(currentSec);
+
+            window._cbtQTimerInterval = setInterval(() => {
+                const remaining = getQuestionTimeRemaining(index);
+                updateQTimerUI(remaining);
+
+                if (remaining <= 0) {
+                    clearInterval(window._cbtQTimerInterval);
+                    window._cbtQTimerInterval = null;
+                    persistLocalAnswer();
+                    triggerCloudSync();
+                    markQuestionExpired(index);
+                    UI.showToast(`Waktu pengerjaan Soal ${index + 1} telah habis!`, 'warning');
+                    
+                    if (index < questions.length - 1) {
+                        setTimeout(() => {
+                            renderQuestion(index + 1);
+                        }, 350);
+                    } else {
+                        setTimeout(() => {
+                            executeSubmit();
+                        }, 350);
+                    }
+                }
+            }, 1000);
+        }
     };
 
     let hasPendingCloudSync = false;
@@ -416,15 +603,42 @@ Router.addRoute('/student/exam', async () => {
             }
             const isCurrent = idx === currentIndex;
             
-            let bg = hasAnswer ? 'var(--primary-500)' : 'var(--bg-base)';
-            let color = hasAnswer ? 'white' : 'var(--text-secondary)';
-            let border = isCurrent ? '2px solid var(--primary-600)' : '1px solid var(--border-color)';
-            
-            if(isCurrent && !hasAnswer) {
-                bg = 'var(--primary-100)';
-            }
+            if (isQuestionTimerEnabled) {
+                const isPassed = idx < currentIndex || isQuestionExpired(idx);
+                const isUpcoming = idx > currentIndex;
+                
+                let bg = 'var(--bg-base)';
+                let color = 'var(--text-secondary)';
+                let border = '1px solid var(--border-color)';
+                let opacity = '1';
 
-            return `<button onclick="renderQuestion(${idx})" style="width: 2.5rem; height: 2.5rem; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-md); background: ${bg}; color: ${color}; border: ${border}; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.2s;">${idx + 1}</button>`;
+                if (isCurrent) {
+                    bg = hasAnswer ? 'var(--primary-600)' : 'var(--primary-100)';
+                    color = hasAnswer ? '#ffffff' : 'var(--primary-800)';
+                    border = '2px solid var(--primary-600)';
+                } else if (isPassed) {
+                    bg = hasAnswer ? 'rgba(16, 185, 129, 0.15)' : '#f1f5f9';
+                    color = hasAnswer ? '#047857' : '#94a3b8';
+                    border = hasAnswer ? '1px solid #10b981' : '1px dashed #cbd5e1';
+                } else {
+                    bg = 'var(--bg-base)';
+                    color = 'var(--text-muted)';
+                    border = '1px solid var(--border-color)';
+                    opacity = '0.55';
+                }
+
+                return `<button style="width: 2.5rem; height: 2.5rem; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-md); background: ${bg}; color: ${color}; border: ${border}; opacity: ${opacity}; font-size: 0.875rem; font-weight: 600; cursor: default; transition: all 0.2s;" disabled title="${isCurrent ? 'Soal Aktif' : (isPassed ? 'Waktu Selesai' : 'Belum Terbuka')}">${isPassed && hasAnswer ? `<i class="ph ph-check" style="font-size:0.9rem;"></i>` : (idx + 1)}</button>`;
+            } else {
+                let bg = hasAnswer ? 'var(--primary-500)' : 'var(--bg-base)';
+                let color = hasAnswer ? 'white' : 'var(--text-secondary)';
+                let border = isCurrent ? '2px solid var(--primary-600)' : '1px solid var(--border-color)';
+                
+                if(isCurrent && !hasAnswer) {
+                    bg = 'var(--primary-100)';
+                }
+
+                return `<button onclick="renderQuestion(${idx})" style="width: 2.5rem; height: 2.5rem; display: flex; align-items: center; justify-content: center; border-radius: var(--radius-md); background: ${bg}; color: ${color}; border: ${border}; font-size: 0.875rem; font-weight: 500; cursor: pointer; transition: all 0.2s;">${idx + 1}</button>`;
+            }
         }).join('');
         document.getElementById('progressGrid').innerHTML = gridHtml;
     };
@@ -450,6 +664,10 @@ Router.addRoute('/student/exam', async () => {
             window._cleanupExamProctor = null;
         }
         if (AppState.timer) clearInterval(AppState.timer);
+        if (window._cbtQTimerInterval) {
+            clearInterval(window._cbtQTimerInterval);
+            window._cbtQTimerInterval = null;
+        }
         if (window._cbtCloudSyncInterval) {
             clearInterval(window._cbtCloudSyncInterval);
             window._cbtCloudSyncInterval = null;
@@ -464,6 +682,7 @@ Router.addRoute('/student/exam', async () => {
                     localStorage.removeItem('cbt_active_exam_session');
                     localStorage.removeItem('cbt_ans_' + AppState.attempt.attemptId);
                     localStorage.removeItem('cbt_switch_' + AppState.attempt.attemptId);
+                    localStorage.removeItem('cbt_cur_idx_' + AppState.attempt.attemptId);
                     localStorage.setItem('cbt_last_result', JSON.stringify({
                         attempt: { ...AppState.attempt, ...res.data, status: 'SUBMITTED' },
                         currentExam: AppState.currentExam
@@ -487,7 +706,7 @@ Router.addRoute('/student/exam', async () => {
         }
     };
 
-    // Timer Logic
+    // Timer Logic for Total Exam
     const updateTimer = () => {
         const now = Date.now();
         const diff = AppState.attempt.deadlineAt - now;
@@ -513,7 +732,7 @@ Router.addRoute('/student/exam', async () => {
     // Initial Render Hook
     document.addEventListener('viewRendered', function onRender(e) {
         if (e.detail.path === '/student/exam') {
-            renderQuestion(0);
+            renderQuestion(currentIndex);
             updateTimer();
             document.removeEventListener('viewRendered', onRender);
         }
@@ -532,10 +751,20 @@ Router.addRoute('/student/exam', async () => {
                         <div id="autosaveIndicator" class="text-xs font-medium flex items-center gap-1" style="color: var(--text-secondary); white-space: nowrap;">
                             <i class="ph ph-check text-success"></i> <span class="hidden sm-inline">Tersimpan di perangkat</span><span class="sm-hidden">Tersimpan</span>
                         </div>
-                        <div class="card flex items-center gap-1.5" style="padding: 0.35rem 0.65rem; border-color: var(--primary-200); background: var(--primary-50);">
-                            <i class="ph ph-timer text-primary"></i>
-                            <span id="examTimer" class="font-bold" style="font-size: 1.05rem; font-family: monospace;">--:--</span>
-                        </div>
+                        ${isQuestionTimerEnabled ? `
+                            <div class="card flex items-center gap-1.5" id="questionTimerCard" style="padding: 0.35rem 0.65rem; border-color: #fde68a; background: #fffbeb;" title="Waktu untuk soal saat ini">
+                                <i class="ph ph-hourglass-high" style="color: #d97706; font-size: 1.1rem;"></i>
+                                <div class="flex flex-col" style="line-height: 1;">
+                                    <span class="text-2xs font-bold" style="color: #92400e; font-size: 0.65rem; text-transform: uppercase;">Waktu Soal</span>
+                                    <span id="questionTimerText" class="font-bold" style="font-size: 1.05rem; font-family: monospace; color: #b45309;">--:--</span>
+                                </div>
+                            </div>
+                        ` : `
+                            <div class="card flex items-center gap-1.5" style="padding: 0.35rem 0.65rem; border-color: var(--primary-200); background: var(--primary-50);" title="Sisa waktu ujian">
+                                <i class="ph ph-timer text-primary"></i>
+                                <span id="examTimer" class="font-bold" style="font-size: 1.05rem; font-family: monospace;">--:--</span>
+                            </div>
+                        `}
                     </div>
                 </div>
             </div>

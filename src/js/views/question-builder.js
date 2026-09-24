@@ -11,14 +11,21 @@ Router.addRoute('/question-builder', async (params) => {
     }
 
     let questions = [];
+    let exam = null;
     try {
-        const res = await api.getQuestions(AppState.user.sessionId, examId);
+        const [res, examRes] = await Promise.all([
+            api.getQuestions(AppState.user.sessionId, examId),
+            api.getExam(AppState.user.sessionId, examId)
+        ]);
         if (res.success && Array.isArray(res.data)) {
             questions = res.data;
         } else {
             UI.showToast(res.message || 'Akses ditolak atau gagal memuat soal.', 'error');
             setTimeout(() => Router.navigate('/dashboard'), 0);
             return `<div class="loading-full">Mengalihkan...</div>`;
+        }
+        if (examRes && examRes.success && examRes.data) {
+            exam = examRes.data;
         }
     } catch (e) {
         console.error("Error loading questions:", e);
@@ -35,6 +42,7 @@ Router.addRoute('/question-builder', async (params) => {
             bottomText: '',
             imageUrl: '',
             score: 10,
+            durationSeconds: null,
             options: [],
             correctAnswer: null,
             scoringMethod: 'EXACT'
@@ -560,9 +568,20 @@ Router.addRoute('/question-builder', async (params) => {
                                               oninput="updateQuestionField(${qIndex}, 'bottomText', this.value)">${escapeHtml(q.bottomText || '')}</textarea>
                                 </div>
                             </div>
-                            <div>
+                            <div style="min-width: 140px;">
                                 <label class="input-label text-xs">Skor / Poin</label>
                                 <input type="number" class="input-control mb-2" value="${q.score}" oninput="updateQuestionField(${qIndex}, 'score', Number(this.value || 10))">
+                                
+                                <label class="input-label text-xs mt-1 flex items-center justify-between" style="gap: 4px;">
+                                    <span><i class="ph ph-timer"></i> Waktu (Detik)</span>
+                                    ${exam && exam.enableQuestionTimer ? '<span class="badge badge-timer-warning" style="font-size:0.65rem; padding: 1px 5px; line-height: 1.2;">Per Soal</span>' : '<span class="text-2xs text-muted" style="font-size:0.68rem;">Detik</span>'}
+                                </label>
+                                <input type="number" class="input-control mb-2" min="1" 
+                                       placeholder="${exam && exam.enableQuestionTimer ? `Default (${exam.defaultQuestionDuration || 60}s)` : 'Ikut Ujian'}" 
+                                       value="${(q.durationSeconds !== undefined && q.durationSeconds !== null && q.durationSeconds !== '') ? q.durationSeconds : ''}" 
+                                       oninput="updateQuestionField(${qIndex}, 'durationSeconds', this.value ? Number(this.value) : null)"
+                                       title="Durasi pengerjaan spesifik soal ini dalam detik. Kosongkan untuk menggunakan durasi default ujian.">
+
                                 ${(q.type === 'MCQ_COMPLEX' || q.type === 'TRUE_FALSE') ? `
                                     <label class="input-label text-xs mt-2">Metode Penilaian</label>
                                     <select class="input-control text-sm" onchange="updateQuestionField(${qIndex}, 'scoringMethod', this.value)">
@@ -585,6 +604,30 @@ Router.addRoute('/question-builder', async (params) => {
                     </div>
                 `;
             }).join('');
+        }
+
+        let timerBannerHtml = '';
+        if (exam && exam.enableQuestionTimer) {
+            timerBannerHtml = `
+                <div style="background: #eff6ff; border: 1px solid #bfdbfe; border-radius: var(--radius-md); padding: 0.85rem 1.15rem; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; gap: 0.75rem; flex-wrap: wrap; box-shadow: var(--shadow-sm);">
+                    <div class="flex items-center gap-2.5">
+                        <span style="background: #2563eb; color: white; width: 34px; height: 34px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0;">
+                            <i class="ph ph-timer"></i>
+                        </span>
+                        <div>
+                            <div class="font-bold text-sm" style="color: #1e40af;">
+                                Mode Waktu Pengerjaan Per Soal Aktif
+                            </div>
+                            <div class="text-xs" style="color: #2563eb; margin-top: 2px;">
+                                Durasi default ujian: <strong>${exam.defaultQuestionDuration || 60} detik</strong> per soal. Anda dapat menentukan waktu khusus untuk tiap soal pada kolom <em>"Waktu (Detik)"</em>.
+                            </div>
+                        </div>
+                    </div>
+                    <button type="button" class="btn btn-secondary btn-sm" onclick="Router.navigate('/exam-editor?id=${exam.examId}')" style="font-size: 0.78rem; padding: 0.35rem 0.75rem; background: #ffffff;">
+                        <i class="ph ph-gear"></i> Pengaturan Ujian
+                    </button>
+                </div>
+            `;
         }
 
         // Always append the Bottom Add Card directly below the questions!
@@ -613,7 +656,7 @@ Router.addRoute('/question-builder', async (params) => {
             </div>
         `;
 
-        container.innerHTML = cardsHtml + bottomAddCardHtml;
+        container.innerHTML = timerBannerHtml + cardsHtml + bottomAddCardHtml;
     };
 
     // ========================================================================
@@ -821,6 +864,10 @@ Router.addRoute('/question-builder', async (params) => {
                     ['pembahasan', 'penjelasan', 'keterangan', 'explanation'], 
                     ['pembahasan', 'penjelasan', 'keterangan']
                 );
+                const colDuration = getCol(
+                    ['durasi soal', 'durasi (detik)', 'durasi detik', 'waktu soal', 'waktu (detik)', 'durasi', 'duration'], 
+                    ['durasi', 'waktu']
+                );
 
                 // Safety guard: colText and colType must NEVER be the same column
                 if (colText === colType || colText === -1) {
@@ -881,6 +928,8 @@ Router.addRoute('/question-builder', async (params) => {
                     const rawKey = getVal(colKey, hasExplicitImgCol ? 9 : 8) || 'A';
                     const score = Number(getVal(colScore, hasExplicitImgCol ? 10 : 9)) || 10;
                     const explanation = getVal(colExp, hasExplicitImgCol ? 11 : 10);
+                    const rawDuration = colDuration !== -1 ? Number(getVal(colDuration, -1)) : null;
+                    const durationSeconds = (rawDuration && !isNaN(rawDuration) && rawDuration > 0) ? rawDuration : null;
 
                     let options = [];
                     let correctAnswer = null;
@@ -961,6 +1010,7 @@ Router.addRoute('/question-builder', async (params) => {
                         bottomText: bottomText,
                         imageUrl: formatDirectImageUrl(rawImg),
                         score: score,
+                        durationSeconds: durationSeconds,
                         options: options,
                         correctAnswer: correctAnswer,
                         scoringMethod: 'EXACT',
