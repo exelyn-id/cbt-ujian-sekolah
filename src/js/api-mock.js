@@ -313,6 +313,10 @@ const api = {
 
     async getExam(sessionId, examId) {
         if (isGAS) return _callGAS('getExam', sessionId, examId);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=get_exam', 'POST', { sessionId, examId });
+            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+        }
 
         await this._delay();
         const db = _getMockDB();
@@ -371,6 +375,10 @@ const api = {
 
     async duplicateExam(sessionId, examId) {
         if (isGAS) return _callGAS('duplicateExam', sessionId, examId);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=duplicate_exam', 'POST', { sessionId, examId });
+            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+        }
 
         await this._delay();
         const db = _getMockDB();
@@ -397,6 +405,10 @@ const api = {
     // 3. QUESTIONS
     async getQuestions(sessionId, examId) {
         if (isGAS) return _callGAS('getQuestions', sessionId, examId);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=get_questions', 'POST', { sessionId, examId });
+            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+        }
 
         await this._delay();
         const db = _getMockDB();
@@ -406,6 +418,10 @@ const api = {
 
     async saveQuestions(sessionId, examId, questionsList) {
         if (isGAS) return _callGAS('saveQuestions', sessionId, examId, questionsList);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=save_questions', 'POST', { sessionId, examId, questionsList });
+            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+        }
 
         await this._delay();
         const db = _getMockDB();
@@ -547,7 +563,7 @@ const api = {
                 participant: AppState.attempt,
                 answers: finalAnswersMap
             });
-            if (vRes && vRes.success) return vRes;
+            if (vRes) return vRes;
         }
 
         await this._delay(800);
@@ -623,6 +639,10 @@ const api = {
 
     async getStudentAttemptDetail(sessionId, attemptId) {
         if (isGAS) return _callGAS('getStudentAttemptDetail', sessionId, attemptId);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=get_student_attempt_detail', 'POST', { sessionId, attemptId });
+            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+        }
 
         await this._delay();
         const db = _getMockDB();
@@ -704,6 +724,10 @@ const api = {
 
     async getExamResultsExportData(sessionId, examId) {
         if (isGAS) return _callGAS('getExamResultsExportData', sessionId, examId);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=get_exam_results_export_data', 'POST', { sessionId, examId });
+            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+        }
 
         await this._delay(800);
         const exam = MOCK_EXAMS.find(e => e.examId === examId) || {

@@ -42,6 +42,20 @@ function doGet(e) {
       .setMimeType(ContentService.MimeType.JSON);
   }
 
+  // Support REST API calls via GET
+  if (e && e.parameter && e.parameter.action) {
+    var getAction = e.parameter.action;
+    var getPayload = {};
+    if (e.parameter.payload) {
+      try { getPayload = JSON.parse(e.parameter.payload); } catch (err) { getPayload = e.parameter; }
+    } else {
+      getPayload = e.parameter;
+    }
+    var getOutput = _handleApiAction(getAction, getPayload);
+    return ContentService.createTextOutput(JSON.stringify(getOutput))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+
   // Ensure database sheets exist on first hit
   try {
     ensureDatabaseSchema();
@@ -80,7 +94,7 @@ function getWebAppUrl() {
 }
 
 // ============================================================================
-// 2B. POST HANDLER FOR VERCEL HIGH-CONCURRENCY BATCH SYNC & REST API
+// 2B. POST & ACTION HANDLER FOR VERCEL HIGH-CONCURRENCY BATCH SYNC & REST API
 // ============================================================================
 function doPost(e) {
   var output = { success: false, message: "Invalid request" };
@@ -88,46 +102,7 @@ function doPost(e) {
     var raw = (e && e.postData && e.postData.contents) ? e.postData.contents : "{}";
     var payload = JSON.parse(raw);
     var action = payload.action || "";
-
-    // 1. Batch Sync Attempts & Answers from Vercel Queue
-    if (action === "batch_sync_attempts") {
-      output = _batchSyncAttempts(payload.attempts || [], payload.answers || []);
-    }
-    // 2. Export active public exams for Vercel cache
-    else if (action === "get_active_public_exams") {
-      output = getActivePublicExams();
-    }
-    // 3. Export single exam with all questions for Vercel cache
-    else if (action === "get_exam_with_questions") {
-      output = _getExamWithAllQuestions(payload.examId);
-    }
-    // 4. Teacher Login
-    else if (action === "login_teacher") {
-      output = loginTeacher(payload.username, payload.password);
-    }
-    // 5. Teacher Exams
-    else if (action === "get_teacher_exams") {
-      output = getTeacherExams(payload.sessionId);
-    }
-    // 6. Save Exam
-    else if (action === "save_exam") {
-      output = saveExam(payload.sessionId, payload.examData || payload);
-    }
-    // 7. Toggle Portal
-    else if (action === "toggle_exam_portal") {
-      output = toggleExamPortalVisibility(payload.sessionId, payload.examId, payload.showInPortal);
-    }
-    // 8. Delete Exam
-    else if (action === "delete_exam") {
-      output = deleteExam(payload.sessionId, payload.examId);
-    }
-    // 9. Exam Results
-    else if (action === "get_exam_results") {
-      output = getExamResults(payload.sessionId, payload.examId);
-    }
-    else {
-      output = { success: false, message: "Aksi tidak dikenali: " + action };
-    }
+    output = _handleApiAction(action, payload);
   } catch (err) {
     console.error("doPost error:", err);
     output = { success: false, message: "Server error: " + err.message };
@@ -135,6 +110,74 @@ function doPost(e) {
 
   return ContentService.createTextOutput(JSON.stringify(output))
     .setMimeType(ContentService.MimeType.JSON);
+}
+
+function _handleApiAction(action, payload) {
+  if (!action) return { success: false, message: "Action required" };
+
+  // 1. Batch Sync Attempts & Answers from Vercel Queue
+  if (action === "batch_sync_attempts") {
+    return _batchSyncAttempts(payload.attempts || [], payload.answers || []);
+  }
+  // 2. Export active public exams for Vercel cache
+  if (action === "get_active_public_exams") {
+    return getActivePublicExams();
+  }
+  // 3. Export single exam with all questions for Vercel cache
+  if (action === "get_exam_with_questions") {
+    return _getExamWithAllQuestions(payload.examId);
+  }
+  // 4. Teacher Login & Logout
+  if (action === "login_teacher") {
+    return loginTeacher(payload.username, payload.password);
+  }
+  if (action === "logout_teacher") {
+    return logoutTeacher(payload.sessionId);
+  }
+  // 5. Teacher Exams
+  if (action === "get_teacher_exams") {
+    return getTeacherExams(payload.sessionId);
+  }
+  if (action === "get_exam") {
+    return getExam(payload.sessionId, payload.examId);
+  }
+  // 6. Save Exam
+  if (action === "save_exam") {
+    return saveExam(payload.sessionId, payload.examData || payload);
+  }
+  // 7. Toggle Portal
+  if (action === "toggle_exam_portal") {
+    return toggleExamPortalVisibility(payload.sessionId, payload.examId, payload.showInPortal);
+  }
+  // 8. Delete & Duplicate Exam
+  if (action === "delete_exam") {
+    return deleteExam(payload.sessionId, payload.examId);
+  }
+  if (action === "duplicate_exam") {
+    return duplicateExam(payload.sessionId, payload.examId || payload.sourceExamId);
+  }
+  // 9. Questions CRUD
+  if (action === "get_questions") {
+    return getQuestions(payload.sessionId, payload.examId);
+  }
+  if (action === "save_questions") {
+    return saveQuestions(payload.sessionId, payload.examId, payload.questionsList || payload.questions || []);
+  }
+  // 10. Exam Results & Export
+  if (action === "get_exam_results") {
+    return getExamResults(payload.sessionId, payload.examId);
+  }
+  if (action === "get_student_attempt_detail") {
+    return getStudentAttemptDetail(payload.sessionId, payload.attemptId);
+  }
+  if (action === "get_exam_results_export_data") {
+    return getExamResultsExportData(payload.sessionId, payload.examId);
+  }
+  if (action === "export_exam_results") {
+    return exportExamResults(payload.sessionId, payload.examId);
+  }
+
+  return { success: false, message: "Aksi tidak dikenali: " + action };
 }
 
 function _batchSyncAttempts(attempts, answers) {

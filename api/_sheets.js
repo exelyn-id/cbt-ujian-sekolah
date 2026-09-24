@@ -9,7 +9,7 @@ function getScriptUrl() {
 }
 
 /**
- * Sends a structured payload to Google Apps Script doPost(e)
+ * Sends a structured payload to Google Apps Script doPost(e) / doGet(e)
  */
 async function callGoogleAppsScript(action, payload = {}) {
     const url = getScriptUrl();
@@ -25,6 +25,7 @@ async function callGoogleAppsScript(action, payload = {}) {
     };
 
     try {
+        // 1. Try standard HTTP POST
         const response = await fetch(url, {
             method: 'POST',
             headers: {
@@ -34,13 +35,34 @@ async function callGoogleAppsScript(action, payload = {}) {
             redirect: 'follow',
         });
 
-        if (!response.ok) {
-            const errText = await response.text();
-            throw new Error(`Google Apps Script HTTP Error ${response.status}: ${errText}`);
+        const rawText = await response.text();
+        const trimmed = rawText.trim();
+
+        // 2. Check if Apps Script returned valid JSON
+        if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+            try {
+                return JSON.parse(trimmed);
+            } catch (jsonErr) {}
         }
 
-        const data = await response.json();
-        return data;
+        // 3. Fallback: If POST returned HTML (e.g. deployment missing doPost), attempt GET fallback
+        if (trimmed.startsWith('<') || trimmed.includes('doPost')) {
+            console.warn(`[Google Apps Script] POST returned HTML for "${action}". Attempting GET fallback...`);
+            try {
+                const getUrl = new URL(url);
+                getUrl.searchParams.set('action', action);
+                getUrl.searchParams.set('payload', JSON.stringify(payload));
+                const getRes = await fetch(getUrl.toString(), { redirect: 'follow' });
+                const getText = (await getRes.text()).trim();
+                if (getText.startsWith('{') || getText.startsWith('[')) {
+                    return JSON.parse(getText);
+                }
+            } catch (getErr) {
+                console.warn('[Google Apps Script] GET fallback also failed:', getErr.message);
+            }
+        }
+
+        throw new Error(`Google Apps Script mengembalikan non-JSON. Pastikan Web App dideploy dengan hak akses "Siapa saja" (Anyone) dan versi terbaru telah diterapkan.`);
     } catch (err) {
         console.error(`[Google Apps Script] Error calling ${action}:`, err.message);
         return {
