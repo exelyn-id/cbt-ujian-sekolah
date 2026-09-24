@@ -419,7 +419,7 @@ const api = {
         if (isGAS) return _callGAS('getActivePublicExams');
         if (isVercel) {
             const vRes = await _callVercel('/api/exams');
-            if (vRes && vRes.success && Array.isArray(vRes.data) && vRes.data.length > 0) return vRes;
+            if (vRes && vRes.success && Array.isArray(vRes.data)) return vRes;
         }
 
         await this._delay();
