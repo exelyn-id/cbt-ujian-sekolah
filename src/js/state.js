@@ -25,6 +25,20 @@ const AppState = {
     }
 };
 
+// Automatically restore persisted teacher/admin authentication on page reload
+try {
+    const savedUser = localStorage.getItem('cbt_auth_user');
+    if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        if (parsed && (parsed.sessionId || parsed.role)) {
+            AppState.user = parsed;
+            AppState.mode = 'teacher';
+        }
+    }
+} catch (e) {
+    console.warn("Failed to restore auth from localStorage:", e);
+}
+
 // Global UI Utilities (Toasts, Modals)
 const UI = {
     showToast(message, type = 'info') {

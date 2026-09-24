@@ -283,6 +283,9 @@ Router.addRoute('/dashboard', async () => {
 });
 
 window.handleLogout = async function() {
+    try {
+        localStorage.removeItem('cbt_auth_user');
+    } catch (e) {}
     if (AppState.user && AppState.user.sessionId) {
         await api.logoutTeacher(AppState.user.sessionId);
     }

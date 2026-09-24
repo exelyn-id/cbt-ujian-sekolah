@@ -1094,6 +1094,20 @@ const AppState = {
     }
 };
 
+// Automatically restore persisted teacher/admin authentication on page reload
+try {
+    const savedUser = localStorage.getItem('cbt_auth_user');
+    if (savedUser) {
+        const parsed = JSON.parse(savedUser);
+        if (parsed && (parsed.sessionId || parsed.role)) {
+            AppState.user = parsed;
+            AppState.mode = 'teacher';
+        }
+    }
+} catch (e) {
+    console.warn("Failed to restore auth from localStorage:", e);
+}
+
 // Global UI Utilities (Toasts, Modals)
 const UI = {
     showToast(message, type = 'info') {
@@ -1683,6 +1697,13 @@ async function _callVercel(endpoint, method = 'GET', body = null) {
         }
         const res = await fetch(endpoint, options);
         if (!res.ok) {
+            if (res.status === 401) {
+                try { localStorage.removeItem('cbt_auth_user'); } catch (e) {}
+                if (typeof AppState !== 'undefined') AppState.update({ user: null, mode: null });
+                if (typeof Router !== 'undefined' && window.location.hash !== '#/login') {
+                    Router.navigate('/login');
+                }
+            }
             const errData = await res.json().catch(() => null);
             return {
                 success: false,
@@ -2704,6 +2725,9 @@ window.handleLogin = async function(event) {
     try {
         const response = await api.loginTeacher(username, password);
         if (response.success) {
+            try {
+                localStorage.setItem('cbt_auth_user', JSON.stringify(response.data));
+            } catch (err) {}
             AppState.update({ 
                 mode: 'teacher',
                 user: response.data
@@ -3009,6 +3033,9 @@ Router.addRoute('/dashboard', async () => {
 });
 
 window.handleLogout = async function() {
+    try {
+        localStorage.removeItem('cbt_auth_user');
+    } catch (e) {}
     if (AppState.user && AppState.user.sessionId) {
         await api.logoutTeacher(AppState.user.sessionId);
     }
@@ -5681,10 +5708,20 @@ window.handleStartExam = async function(event) {
         
         if (res.success && res.data) {
             AppState.update({ 
+                mode: 'student',
+                currentExam: AppState.currentExam,
                 attempt: res.data,
                 questions: res.data.questions,
                 answers: {}
             });
+            try {
+                localStorage.setItem('cbt_active_exam_session', JSON.stringify({
+                    mode: 'student',
+                    currentExam: AppState.currentExam,
+                    attempt: res.data,
+                    questions: res.data.questions
+                }));
+            } catch (err) {}
             UI.showToast('Ujian dimulai. Selamat mengerjakan!', 'success');
             Router.navigate('/student/exam');
         } else {
@@ -5703,6 +5740,24 @@ window.handleStartExam = async function(event) {
 
 // --- student-exam.js ---
 Router.addRoute('/student/exam', async () => {
+    // If state in memory is empty (e.g. after accidental page refresh), restore from localStorage
+    if (!AppState.attempt || !AppState.currentExam) {
+        try {
+            const savedSession = localStorage.getItem('cbt_active_exam_session');
+            if (savedSession) {
+                const parsed = JSON.parse(savedSession);
+                if (parsed && parsed.attempt && parsed.currentExam) {
+                    AppState.mode = 'student';
+                    AppState.currentExam = parsed.currentExam;
+                    AppState.attempt = parsed.attempt;
+                    AppState.questions = parsed.questions || [];
+                }
+            }
+        } catch (e) {
+            console.warn("Failed to restore exam session from localStorage:", e);
+        }
+    }
+
     if (AppState.mode !== 'student' || !AppState.attempt) {
         setTimeout(() => Router.navigate('/student/landing'), 0);
         return `<div class="loading-full">Mengalihkan...</div>`;
@@ -5839,16 +5894,26 @@ Router.addRoute('/student/exam', async () => {
         onUserReturned();
     }
 
-    // Attach proctor listeners
+    const handleBeforeUnload = (e) => {
+        if (AppState.attempt && AppState.attempt.status !== 'SUBMITTED') {
+            e.preventDefault();
+            e.returnValue = 'Ujian sedang berlangsung! Apakah Anda yakin ingin memuat ulang halaman?';
+            return e.returnValue;
+        }
+    };
+
+    // Attach proctor & reload protection listeners
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('blur', handleBlur);
     window.addEventListener('focus', handleFocus);
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
     // Register cleanup function
     window._cleanupExamProctor = function() {
         document.removeEventListener('visibilitychange', handleVisibility);
         window.removeEventListener('blur', handleBlur);
         window.removeEventListener('focus', handleFocus);
+        window.removeEventListener('beforeunload', handleBeforeUnload);
         const modal = document.getElementById('proctorWarningModal');
         if (modal) modal.remove();
     };
@@ -6137,8 +6202,13 @@ Router.addRoute('/student/exam', async () => {
             const res = await api.submitExamAttempt(AppState.attempt.attemptId, AppState.answers, tabSwitchCount);
             if (res.success && res.data) {
                 try {
+                    localStorage.removeItem('cbt_active_exam_session');
                     localStorage.removeItem('cbt_ans_' + AppState.attempt.attemptId);
                     localStorage.removeItem('cbt_switch_' + AppState.attempt.attemptId);
+                    localStorage.setItem('cbt_last_result', JSON.stringify({
+                        attempt: { ...AppState.attempt, ...res.data, status: 'SUBMITTED' },
+                        currentExam: AppState.currentExam
+                    }));
                 } catch (e) {}
                 AppState.update({ 
                     attempt: { 
@@ -6249,8 +6319,22 @@ Router.addRoute('/student/exam', async () => {
 
 // --- student-result.js ---
 Router.addRoute('/student/result', async () => {
+    if (!AppState.attempt || !AppState.currentExam) {
+        try {
+            const savedResult = localStorage.getItem('cbt_last_result');
+            if (savedResult) {
+                const parsed = JSON.parse(savedResult);
+                if (parsed && parsed.attempt) {
+                    AppState.mode = 'student';
+                    AppState.attempt = parsed.attempt;
+                    AppState.currentExam = parsed.currentExam || {};
+                }
+            }
+        } catch (e) {}
+    }
+
     if (AppState.mode !== 'student' || !AppState.attempt) {
-        setTimeout(() => Router.navigate('/student/landing'), 0);
+        setTimeout(() => Router.navigate('/student/dashboard'), 0);
         return `<div class="loading-full">Mengalihkan...</div>`;
     }
 

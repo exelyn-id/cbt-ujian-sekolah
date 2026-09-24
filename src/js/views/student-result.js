@@ -1,6 +1,20 @@
 Router.addRoute('/student/result', async () => {
+    if (!AppState.attempt || !AppState.currentExam) {
+        try {
+            const savedResult = localStorage.getItem('cbt_last_result');
+            if (savedResult) {
+                const parsed = JSON.parse(savedResult);
+                if (parsed && parsed.attempt) {
+                    AppState.mode = 'student';
+                    AppState.attempt = parsed.attempt;
+                    AppState.currentExam = parsed.currentExam || {};
+                }
+            }
+        } catch (e) {}
+    }
+
     if (AppState.mode !== 'student' || !AppState.attempt) {
-        setTimeout(() => Router.navigate('/student/landing'), 0);
+        setTimeout(() => Router.navigate('/student/dashboard'), 0);
         return `<div class="loading-full">Mengalihkan...</div>`;
     }
 

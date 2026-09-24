@@ -143,10 +143,20 @@ window.handleStartExam = async function(event) {
         
         if (res.success && res.data) {
             AppState.update({ 
+                mode: 'student',
+                currentExam: AppState.currentExam,
                 attempt: res.data,
                 questions: res.data.questions,
                 answers: {}
             });
+            try {
+                localStorage.setItem('cbt_active_exam_session', JSON.stringify({
+                    mode: 'student',
+                    currentExam: AppState.currentExam,
+                    attempt: res.data,
+                    questions: res.data.questions
+                }));
+            } catch (err) {}
             UI.showToast('Ujian dimulai. Selamat mengerjakan!', 'success');
             Router.navigate('/student/exam');
         } else {

@@ -23,6 +23,13 @@ async function _callVercel(endpoint, method = 'GET', body = null) {
         }
         const res = await fetch(endpoint, options);
         if (!res.ok) {
+            if (res.status === 401) {
+                try { localStorage.removeItem('cbt_auth_user'); } catch (e) {}
+                if (typeof AppState !== 'undefined') AppState.update({ user: null, mode: null });
+                if (typeof Router !== 'undefined' && window.location.hash !== '#/login') {
+                    Router.navigate('/login');
+                }
+            }
             const errData = await res.json().catch(() => null);
             return {
                 success: false,

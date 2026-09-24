@@ -46,6 +46,9 @@ window.handleLogin = async function(event) {
     try {
         const response = await api.loginTeacher(username, password);
         if (response.success) {
+            try {
+                localStorage.setItem('cbt_auth_user', JSON.stringify(response.data));
+            } catch (err) {}
             AppState.update({ 
                 mode: 'teacher',
                 user: response.data

@@ -231,7 +231,8 @@ async function getTeacherExams(teacherId, role, username) {
     // Calculate dynamic participant counts and avg scores
     const enriched = [];
     for (const e of examList) {
-        const attemptIds = (await kv.lrange(`exam:attempts:${e.examId}`, 0, -1)) || [];
+        const rawAttemptIds = (await kv.lrange(`exam:attempts:${e.examId}`, 0, -1)) || [];
+        const attemptIds = Array.from(new Set(rawAttemptIds));
         let totalScore = 0;
         let submittedCount = 0;
 
@@ -508,32 +509,59 @@ async function getPublicExam(examId) {
 // ============================================================================
 async function getExamResults(examId) {
     await ensureDbInitialized();
-    const attemptIds = (await kv.lrange(`exam:attempts:${examId}`, 0, -1)) || [];
-    const results = [];
+    const rawAttemptIds = (await kv.lrange(`exam:attempts:${examId}`, 0, -1)) || [];
+    const attemptIds = Array.from(new Set(rawAttemptIds));
+    const allRecords = [];
 
     for (let i = 0; i < attemptIds.length; i += 50) {
         const chunk = attemptIds.slice(i, i + 50);
         const chunkKeys = chunk.map(id => `attempt:record:${id}`);
         const recs = (await kv.mget(chunkKeys)) || [];
         for (const rec of recs) {
-            if (rec) {
-                results.push({
-                    attemptId: rec.attemptId,
-                    examId: rec.examId,
-                    nis: rec.nis || '',
-                    name: rec.participantName || '',
-                    className: rec.className || '',
-                    attemptNumber: rec.attemptNumber || 1,
-                    status: rec.status || 'SUBMITTED',
-                    score: rec.status === 'SUBMITTED' ? (rec.finalScore !== undefined ? rec.finalScore : rec.rawScore) : null,
-                    kkm: rec.kkm || 75,
-                    passStatus: rec.status === 'SUBMITTED' ? (rec.passStatus || 'BELUM LULUS') : null,
-                    tabSwitchCount: Number(rec.tabSwitchCount || 0),
-                    submittedAt: rec.submittedAt || rec.startedAt
-                });
+            if (rec) allRecords.push(rec);
+        }
+    }
+
+    // Deduplicate student attempts to prevent duplicate rows for the same student
+    const studentMap = new Map();
+    for (const rec of allRecords) {
+        const nisClean = (rec.nis && String(rec.nis).trim() !== '' && String(rec.nis).trim() !== '-') ? String(rec.nis).trim().toUpperCase() : null;
+        const nameClean = (rec.participantName && String(rec.participantName).trim()) ? String(rec.participantName).trim().toUpperCase() : '';
+        const classClean = (rec.className && String(rec.className).trim()) ? String(rec.className).trim().toUpperCase() : '';
+        const key = nisClean ? `NIS_${nisClean}` : (nameClean ? `NC_${nameClean}_${classClean}` : rec.attemptId);
+
+        const existing = studentMap.get(key);
+        if (!existing) {
+            studentMap.set(key, rec);
+        } else {
+            // Prioritize SUBMITTED over IN_PROGRESS, or later timestamp
+            if (rec.status === 'SUBMITTED' && existing.status !== 'SUBMITTED') {
+                studentMap.set(key, rec);
+            } else if (rec.status === existing.status) {
+                const timeRec = new Date(rec.submittedAt || rec.startedAt || 0).getTime();
+                const timeExisting = new Date(existing.submittedAt || existing.startedAt || 0).getTime();
+                if (timeRec >= timeExisting) {
+                    studentMap.set(key, rec);
+                }
             }
         }
     }
+
+    const uniqueRecords = Array.from(studentMap.values());
+    const results = uniqueRecords.map(rec => ({
+        attemptId: rec.attemptId,
+        examId: rec.examId,
+        nis: rec.nis || '',
+        name: rec.participantName || '',
+        className: rec.className || '',
+        attemptNumber: rec.attemptNumber || 1,
+        status: rec.status || 'SUBMITTED',
+        score: rec.status === 'SUBMITTED' ? (rec.finalScore !== undefined ? rec.finalScore : rec.rawScore) : null,
+        kkm: rec.kkm || 75,
+        passStatus: rec.status === 'SUBMITTED' ? (rec.passStatus || 'BELUM LULUS') : null,
+        tabSwitchCount: Number(rec.tabSwitchCount || 0),
+        submittedAt: rec.submittedAt || rec.startedAt
+    }));
 
     const submitted = results.filter(a => a.status === 'SUBMITTED');
     const scores = submitted.map(a => Number(a.score || 0));
@@ -642,18 +670,48 @@ async function getExamResultsExportData(examId) {
         questionId: q.id,
         orderNo: q.orderNo || (idx + 1)
     }));
-    const attemptIds = (await kv.lrange(`exam:attempts:${examId}`, 0, -1)) || [];
-    const attempts = [];
+    const rawAttemptIds = (await kv.lrange(`exam:attempts:${examId}`, 0, -1)) || [];
+    const attemptIds = Array.from(new Set(rawAttemptIds));
+    const allRecords = [];
 
     for (let i = 0; i < attemptIds.length; i += 50) {
         const chunk = attemptIds.slice(i, i + 50);
         const chunkKeys = chunk.map(id => `attempt:record:${id}`);
         const recs = (await kv.mget(chunkKeys)) || [];
         for (const rec of recs) {
-            if (rec) {
-                const answersMap = {};
-                let totalCorrect = 0;
-                let totalWrong = 0;
+            if (rec) allRecords.push(rec);
+        }
+    }
+
+    // Deduplicate student attempts
+    const studentMap = new Map();
+    for (const rec of allRecords) {
+        const nisClean = (rec.nis && String(rec.nis).trim() !== '' && String(rec.nis).trim() !== '-') ? String(rec.nis).trim().toUpperCase() : null;
+        const nameClean = (rec.participantName && String(rec.participantName).trim()) ? String(rec.participantName).trim().toUpperCase() : '';
+        const classClean = (rec.className && String(rec.className).trim()) ? String(rec.className).trim().toUpperCase() : '';
+        const key = nisClean ? `NIS_${nisClean}` : (nameClean ? `NC_${nameClean}_${classClean}` : rec.attemptId);
+
+        const existing = studentMap.get(key);
+        if (!existing) {
+            studentMap.set(key, rec);
+        } else {
+            if (rec.status === 'SUBMITTED' && existing.status !== 'SUBMITTED') {
+                studentMap.set(key, rec);
+            } else if (rec.status === existing.status) {
+                const timeRec = new Date(rec.submittedAt || rec.startedAt || 0).getTime();
+                const timeExisting = new Date(existing.submittedAt || existing.startedAt || 0).getTime();
+                if (timeRec >= timeExisting) {
+                    studentMap.set(key, rec);
+                }
+            }
+        }
+    }
+
+    const attempts = [];
+    for (const rec of Array.from(studentMap.values())) {
+        const answersMap = {};
+        let totalCorrect = 0;
+        let totalWrong = 0;
 
                 if (Array.isArray(rec.answers)) {
                     rec.answers.forEach(ans => {

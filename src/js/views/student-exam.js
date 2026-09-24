@@ -1,4 +1,22 @@
 Router.addRoute('/student/exam', async () => {
+    // If state in memory is empty (e.g. after accidental page refresh), restore from localStorage
+    if (!AppState.attempt || !AppState.currentExam) {
+        try {
+            const savedSession = localStorage.getItem('cbt_active_exam_session');
+            if (savedSession) {
+                const parsed = JSON.parse(savedSession);
+                if (parsed && parsed.attempt && parsed.currentExam) {
+                    AppState.mode = 'student';
+                    AppState.currentExam = parsed.currentExam;
+                    AppState.attempt = parsed.attempt;
+                    AppState.questions = parsed.questions || [];
+                }
+            }
+        } catch (e) {
+            console.warn("Failed to restore exam session from localStorage:", e);
+        }
+    }
+
     if (AppState.mode !== 'student' || !AppState.attempt) {
         setTimeout(() => Router.navigate('/student/landing'), 0);
         return `<div class="loading-full">Mengalihkan...</div>`;
@@ -135,16 +153,26 @@ Router.addRoute('/student/exam', async () => {
         onUserReturned();
     }
 
-    // Attach proctor listeners
+    const handleBeforeUnload = (e) => {
+        if (AppState.attempt && AppState.attempt.status !== 'SUBMITTED') {
+            e.preventDefault();
+            e.returnValue = 'Ujian sedang berlangsung! Apakah Anda yakin ingin memuat ulang halaman?';
+            return e.returnValue;
+        }
+    };
+
+    // Attach proctor & reload protection listeners
     document.addEventListener('visibilitychange', handleVisibility);
     window.addEventListener('blur', handleBlur);
     window.addEventListener('focus', handleFocus);
+    window.addEventListener('beforeunload', handleBeforeUnload);
 
     // Register cleanup function
     window._cleanupExamProctor = function() {
         document.removeEventListener('visibilitychange', handleVisibility);
         window.removeEventListener('blur', handleBlur);
         window.removeEventListener('focus', handleFocus);
+        window.removeEventListener('beforeunload', handleBeforeUnload);
         const modal = document.getElementById('proctorWarningModal');
         if (modal) modal.remove();
     };
@@ -433,8 +461,13 @@ Router.addRoute('/student/exam', async () => {
             const res = await api.submitExamAttempt(AppState.attempt.attemptId, AppState.answers, tabSwitchCount);
             if (res.success && res.data) {
                 try {
+                    localStorage.removeItem('cbt_active_exam_session');
                     localStorage.removeItem('cbt_ans_' + AppState.attempt.attemptId);
                     localStorage.removeItem('cbt_switch_' + AppState.attempt.attemptId);
+                    localStorage.setItem('cbt_last_result', JSON.stringify({
+                        attempt: { ...AppState.attempt, ...res.data, status: 'SUBMITTED' },
+                        currentExam: AppState.currentExam
+                    }));
                 } catch (e) {}
                 AppState.update({ 
                     attempt: { 

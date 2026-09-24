@@ -247,10 +247,13 @@ module.exports = async function handler(req, res) {
         await kv.set(`attempt:record:${attemptId}`, attemptRecord, { ex: 86400 * 30 });
         await kv.set(`attempt:answers:${attemptId}`, answerRecords, { ex: 86400 * 30 });
 
-        // 5. Index attemptId for real-time teacher viewing & download
+        // 5. Index attemptId for real-time teacher viewing & download (avoid duplicates)
         try {
             const examAttemptsKey = `exam:attempts:${examId}`;
-            await kv.rpush(examAttemptsKey, attemptId);
+            const currentAttempts = (await kv.lrange(examAttemptsKey, 0, -1)) || [];
+            if (!currentAttempts.includes(attemptId)) {
+                await kv.rpush(examAttemptsKey, attemptId);
+            }
         } catch (indexErr) {
             console.error('Failed to index exam attempt in Redis:', indexErr);
         }
