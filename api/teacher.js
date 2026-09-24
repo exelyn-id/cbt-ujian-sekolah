@@ -34,9 +34,20 @@ module.exports = async function handler(req, res) {
             return res.status(200).json({ success: true, message: 'Berhasil keluar' });
         }
 
-        // 3. Exams List
+        // Verify session for all authenticated actions
+        const sessionId = payload.sessionId || (req.headers.authorization ? req.headers.authorization.replace(/^Bearer\s+/i, '') : null);
+        const session = sessionId ? await db.verifySession(sessionId) : null;
+
+        if (!session) {
+            return res.status(401).json({
+                success: false,
+                message: 'Sesi Anda telah berakhir atau tidak valid. Silakan login kembali.'
+            });
+        }
+
+        // 3. Exams List (Admin sees all, Teachers see only their own)
         if (action === 'get_teacher_exams') {
-            const exams = await db.getTeacherExams(payload.teacherId, payload.role);
+            const exams = await db.getTeacherExams(session.teacherId, session.role, session.username);
             return res.status(200).json({ success: true, data: exams });
         }
 
@@ -44,47 +55,65 @@ module.exports = async function handler(req, res) {
         if (action === 'get_exam') {
             const exam = await db.getExam(payload.examId);
             if (!exam) return res.status(404).json({ success: false, message: 'Ujian tidak ditemukan.' });
+            if (!db.isExamOwnerOrAdmin(exam, session)) {
+                return res.status(403).json({ success: false, message: 'Akses ditolak. Ujian ini bukan milik Anda.' });
+            }
             return res.status(200).json({ success: true, data: exam });
         }
 
         // 5. Save Exam Meta
         if (action === 'save_exam') {
-            const saveRes = await db.saveExam(payload.examData || payload);
-            return res.status(200).json(saveRes);
+            const saveRes = await db.saveExam(payload.examData || payload, session);
+            return res.status(saveRes.success ? 200 : 403).json(saveRes);
         }
 
         // 6. Toggle Portal Visibility
         if (action === 'toggle_exam_portal') {
-            const toggleRes = await db.toggleExamPortal(payload.examId, payload.showInPortal);
-            return res.status(200).json(toggleRes);
+            const toggleRes = await db.toggleExamPortal(payload.examId, payload.showInPortal, session);
+            return res.status(toggleRes.success ? 200 : 403).json(toggleRes);
         }
 
         // 7. Delete Exam
         if (action === 'delete_exam') {
-            const delRes = await db.deleteExam(payload.examId);
-            return res.status(200).json(delRes);
+            const delRes = await db.deleteExam(payload.examId, session);
+            return res.status(delRes.success ? 200 : 403).json(delRes);
         }
 
         // 8. Duplicate Exam
         if (action === 'duplicate_exam') {
-            const dupRes = await db.duplicateExam(payload.examId || payload.sourceExamId);
-            return res.status(200).json(dupRes);
+            const dupRes = await db.duplicateExam(payload.examId || payload.sourceExamId, session);
+            return res.status(dupRes.success ? 200 : 403).json(dupRes);
         }
 
         // 9. Questions: Get
         if (action === 'get_questions') {
+            const exam = await db.getExam(payload.examId);
+            if (!exam) return res.status(404).json({ success: false, message: 'Ujian tidak ditemukan.' });
+            if (!db.isExamOwnerOrAdmin(exam, session)) {
+                return res.status(403).json({ success: false, message: 'Akses ditolak. Soal ini bukan milik Anda.' });
+            }
             const questions = await db.getQuestions(payload.examId);
             return res.status(200).json({ success: true, data: questions });
         }
 
         // 10. Questions: Save
         if (action === 'save_questions') {
+            const exam = await db.getExam(payload.examId);
+            if (!exam) return res.status(404).json({ success: false, message: 'Ujian tidak ditemukan.' });
+            if (!db.isExamOwnerOrAdmin(exam, session)) {
+                return res.status(403).json({ success: false, message: 'Akses ditolak. Anda tidak berhak mengubah soal ujian milik guru lain.' });
+            }
             const saveQRes = await db.saveQuestions(payload.examId, payload.questionsList || payload.questions || []);
             return res.status(200).json(saveQRes);
         }
 
         // 11. Results: Live Exam Results
         if (action === 'get_exam_results') {
+            const exam = await db.getExam(payload.examId);
+            if (!exam) return res.status(404).json({ success: false, message: 'Ujian tidak ditemukan.' });
+            if (!db.isExamOwnerOrAdmin(exam, session)) {
+                return res.status(403).json({ success: false, message: 'Akses ditolak. Anda tidak berhak melihat hasil ujian milik guru lain.' });
+            }
             const resultsData = await db.getExamResults(payload.examId);
             return res.status(200).json({ success: true, data: resultsData });
         }
@@ -95,25 +124,43 @@ module.exports = async function handler(req, res) {
             if (!detailData) {
                 return res.status(404).json({ success: false, message: 'Data pengerjaan tidak ditemukan.' });
             }
+            const exam = await db.getExam(detailData.attempt?.examId);
+            if (exam && !db.isExamOwnerOrAdmin(exam, session)) {
+                return res.status(403).json({ success: false, message: 'Akses ditolak. Anda tidak berhak melihat detail pengerjaan ujian guru lain.' });
+            }
             return res.status(200).json({ success: true, data: detailData });
         }
 
         // 13. Results: Excel Export Generator Data
         if (action === 'get_exam_results_export_data') {
+            const exam = await db.getExam(payload.examId);
+            if (!exam) return res.status(404).json({ success: false, message: 'Ujian tidak ditemukan.' });
+            if (!db.isExamOwnerOrAdmin(exam, session)) {
+                return res.status(403).json({ success: false, message: 'Akses ditolak. Anda tidak berhak mengunduh data rekap ujian guru lain.' });
+            }
             const exportData = await db.getExamResultsExportData(payload.examId);
             return res.status(200).json({ success: true, data: exportData });
         }
 
-        // 14. User Management (Add/List/Delete Users from Vercel)
+        // 14. User Management (Admin Only)
         if (action === 'get_users') {
+            if (session.role !== 'ADMIN') {
+                return res.status(403).json({ success: false, message: 'Akses ditolak. Fitur ini hanya untuk Administrator.' });
+            }
             const users = await db.listUsers();
             return res.status(200).json({ success: true, data: users });
         }
         if (action === 'save_user') {
+            if (session.role !== 'ADMIN') {
+                return res.status(403).json({ success: false, message: 'Akses ditolak. Fitur ini hanya untuk Administrator.' });
+            }
             const userRes = await db.saveUser(payload.userData || payload);
             return res.status(200).json(userRes);
         }
         if (action === 'delete_user') {
+            if (session.role !== 'ADMIN') {
+                return res.status(403).json({ success: false, message: 'Akses ditolak. Fitur ini hanya untuk Administrator.' });
+            }
             const delUserRes = await db.deleteUser(payload.username);
             return res.status(200).json(delUserRes);
         }

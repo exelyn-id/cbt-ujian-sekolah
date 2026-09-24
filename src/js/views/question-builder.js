@@ -15,9 +15,16 @@ Router.addRoute('/question-builder', async (params) => {
         const res = await api.getQuestions(AppState.user.sessionId, examId);
         if (res.success && Array.isArray(res.data)) {
             questions = res.data;
+        } else {
+            UI.showToast(res.message || 'Akses ditolak atau gagal memuat soal.', 'error');
+            setTimeout(() => Router.navigate('/dashboard'), 0);
+            return `<div class="loading-full">Mengalihkan...</div>`;
         }
     } catch (e) {
         console.error("Error loading questions:", e);
+        UI.showToast('Gagal memuat soal.', 'error');
+        setTimeout(() => Router.navigate('/dashboard'), 0);
+        return `<div class="loading-full">Mengalihkan...</div>`;
     }
 
     window.addQuestion = function(type) {

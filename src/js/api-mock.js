@@ -283,9 +283,21 @@ const api = {
 
         await this._delay();
         const db = _getMockDB();
+        const isAdmin = (typeof AppState !== 'undefined') && AppState.user && AppState.user.role === 'ADMIN';
+        const currentTeacherId = (typeof AppState !== 'undefined') && AppState.user && AppState.user.teacherId;
+        const currentUsername = (typeof AppState !== 'undefined') && AppState.user && AppState.user.username;
+
+        const filtered = (db.exams || []).filter(e => {
+            if (e.status === 'ARCHIVED') return false;
+            if (isAdmin) return true;
+            return (e.ownerTeacherId && e.ownerTeacherId === currentTeacherId) ||
+                   (e.ownerUsername && e.ownerUsername === currentUsername) ||
+                   (e.teacherId && e.teacherId === currentTeacherId);
+        });
+
         return {
             success: true,
-            data: (db.exams || []).filter(e => e.status !== 'ARCHIVED').map(e => ({
+            data: filtered.map(e => ({
                 ...e,
                 showInPortal: e.showInPortal !== false
             }))
@@ -332,7 +344,14 @@ const api = {
     async saveExam(sessionId, examData) {
         if (isGAS) return _callGAS('saveExam', sessionId, examData);
         if (isVercel) {
-            const vRes = await _callVercel('/api/teacher?action=save_exam', 'POST', { sessionId, examData });
+            const enriched = {
+                ...examData,
+                ownerTeacherId: examData.ownerTeacherId || ((typeof AppState !== 'undefined') && AppState.user ? AppState.user.teacherId : undefined),
+                ownerUsername: examData.ownerUsername || ((typeof AppState !== 'undefined') && AppState.user ? AppState.user.username : undefined),
+                ownerTeacherName: examData.ownerTeacherName || examData.teacherName || ((typeof AppState !== 'undefined') && AppState.user ? AppState.user.teacherName : undefined),
+                teacherName: examData.teacherName || ((typeof AppState !== 'undefined') && AppState.user ? AppState.user.teacherName : undefined)
+            };
+            const vRes = await _callVercel('/api/teacher?action=save_exam', 'POST', { sessionId, examData: enriched });
             if (vRes) return vRes;
         }
 
@@ -347,10 +366,14 @@ const api = {
             }
         }
         const newExamId = 'EXM_' + Math.floor(Math.random() * 90000 + 10000);
+        const userObj = (typeof AppState !== 'undefined' && AppState.user) ? AppState.user : {};
         const newExam = {
             ...examData,
             examId: newExamId,
-            ownerTeacherId: 'TCH_001',
+            ownerTeacherId: userObj.teacherId || 'TCH_001',
+            ownerUsername: userObj.username || 'guru',
+            ownerTeacherName: userObj.teacherName || 'Guru',
+            teacherName: userObj.teacherName || 'Guru',
             participantCount: 0,
             avgScore: 0
         };
@@ -390,11 +413,16 @@ const api = {
         if (!src) return { success: false, message: 'Ujian tidak ditemukan.' };
 
         const newExamId = 'EXM_' + Math.floor(Math.random() * 90000 + 10000);
+        const userObj = (typeof AppState !== 'undefined' && AppState.user) ? AppState.user : {};
         const copy = {
             ...src,
             examId: newExamId,
             title: src.title + ' (Salinan)',
             status: 'DRAFT',
+            ownerTeacherId: userObj.teacherId || src.ownerTeacherId,
+            ownerUsername: userObj.username || src.ownerUsername,
+            ownerTeacherName: userObj.teacherName || src.ownerTeacherName,
+            teacherName: userObj.teacherName || src.teacherName,
             participantCount: 0,
             avgScore: 0
         };

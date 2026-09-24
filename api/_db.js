@@ -18,6 +18,8 @@ const DEFAULT_EXAMS = [
     {
         examId: 'EXM_001',
         ownerTeacherId: 'TCH_001',
+        ownerUsername: 'guru',
+        ownerTeacherName: 'Pak Andi Prasetyo, S.Kom',
         title: 'Ujian Tengah Semester Informatika',
         subject: 'Informatika',
         material: 'Dasar Web & Pemrograman',
@@ -200,10 +202,31 @@ async function deleteUser(username) {
 // ============================================================================
 // EXAM OPERATIONS
 // ============================================================================
-async function getTeacherExams(teacherId, role) {
+function isExamOwnerOrAdmin(exam, session) {
+    if (!exam || !session) return false;
+    if (session.role === 'ADMIN') return true;
+    const teacherId = session.teacherId || session.id;
+    const username = session.username;
+    if (teacherId && (exam.ownerTeacherId === teacherId || exam.teacherId === teacherId)) return true;
+    if (username && (exam.ownerUsername === username || exam.ownerTeacherId === username)) return true;
+    return false;
+}
+
+async function getTeacherExams(teacherId, role, username) {
     await ensureDbInitialized();
     const examsMap = (await kv.get('db:exams')) || {};
-    const examList = Object.values(examsMap).filter(e => e.status !== 'ARCHIVED');
+    const usersMap = (await kv.get('db:users')) || {};
+    let examList = Object.values(examsMap).filter(e => e.status !== 'ARCHIVED');
+
+    // Role-based visibility:
+    // Only ADMIN can see all exams. Teachers can only see their own exams.
+    if (role !== 'ADMIN') {
+        examList = examList.filter(e => {
+            const matchId = Boolean(teacherId && (e.ownerTeacherId === teacherId || e.teacherId === teacherId));
+            const matchUser = Boolean(username && (e.ownerUsername === username || e.ownerTeacherId === username));
+            return matchId || matchUser;
+        });
+    }
 
     // Calculate dynamic participant counts and avg scores
     const enriched = [];
@@ -221,8 +244,17 @@ async function getTeacherExams(teacherId, role) {
         }
 
         const avgScore = submittedCount > 0 ? Math.round((totalScore / submittedCount) * 10) / 10 : 0;
+
+        // Resolve teacher display name
+        let ownerTeacherName = e.ownerTeacherName || e.teacherName;
+        if (!ownerTeacherName && e.ownerTeacherId) {
+            const foundUser = Object.values(usersMap).find(u => u.id === e.ownerTeacherId || u.username === e.ownerTeacherId);
+            if (foundUser) ownerTeacherName = foundUser.name;
+        }
+
         enriched.push({
             ...e,
+            ownerTeacherName: ownerTeacherName || 'Guru',
             participantCount: attemptIds.length,
             avgScore: avgScore,
             showInPortal: e.showInPortal !== false
@@ -238,21 +270,49 @@ async function getExam(examId) {
     return examsMap[examId] || null;
 }
 
-async function saveExam(examData, ownerTeacherId) {
+async function saveExam(examData, userSession) {
     await ensureDbInitialized();
     const examsMap = (await kv.get('db:exams')) || {};
     const examIds = (await kv.get('db:exam_ids')) || [];
 
     const examId = examData.examId || ('EXM_' + Math.floor(Math.random() * 90000 + 10000));
-    const isNew = !examsMap[examId];
+    const existing = examsMap[examId];
+    const isNew = !existing;
+
+    // Check permission if editing
+    if (!isNew && userSession && typeof userSession === 'object' && userSession.role !== 'ADMIN') {
+        if (!isExamOwnerOrAdmin(existing, userSession)) {
+            return { success: false, message: 'Akses ditolak. Anda tidak berhak mengubah ujian milik guru lain.' };
+        }
+    }
+
+    const sessionObj = typeof userSession === 'object' ? userSession : null;
+    const sessionTeacherId = sessionObj ? sessionObj.teacherId : (typeof userSession === 'string' ? userSession : null);
+
+    const ownerTeacherId = isNew 
+        ? (sessionTeacherId || examData.ownerTeacherId || 'TCH_001')
+        : (existing.ownerTeacherId || sessionTeacherId || 'TCH_001');
+
+    const ownerUsername = isNew
+        ? (sessionObj?.username || examData.ownerUsername || '')
+        : (existing.ownerUsername || sessionObj?.username || '');
+
+    const ownerTeacherName = isNew
+        ? (sessionObj?.teacherName || examData.ownerTeacherName || examData.teacherName || 'Guru')
+        : (existing.ownerTeacherName || sessionObj?.teacherName || 'Guru');
 
     const updated = {
-        ...(examsMap[examId] || {}),
+        ...(existing || {}),
         ...examData,
         examId: examId,
-        ownerTeacherId: examsMap[examId]?.ownerTeacherId || ownerTeacherId || 'TCH_001',
-        showInPortal: examData.showInPortal !== undefined ? Boolean(examData.showInPortal) : true,
-        status: examData.status || 'ACTIVE'
+        ownerTeacherId: ownerTeacherId,
+        ownerUsername: ownerUsername,
+        ownerTeacherName: ownerTeacherName,
+        teacherName: ownerTeacherName,
+        showInPortal: examData.showInPortal !== undefined ? Boolean(examData.showInPortal) : (existing ? existing.showInPortal !== false : true),
+        status: examData.status || (existing ? existing.status : 'ACTIVE'),
+        updatedAt: new Date().toISOString(),
+        createdAt: isNew ? new Date().toISOString() : (existing.createdAt || new Date().toISOString())
     };
 
     examsMap[examId] = updated;
@@ -262,53 +322,89 @@ async function saveExam(examData, ownerTeacherId) {
     await kv.set('db:exam_ids', examIds);
 
     // Keep exam:full synced
-    let full = await kv.get(`exam:full:${examId}`) || {};
+    let full = (await kv.get(`exam:full:${examId}`)) || {};
     full = { ...full, ...updated };
     await kv.set(`exam:full:${examId}`, full);
 
-    return { success: true, data: { examId }, message: isNew ? 'Ujian berhasil dibuat.' : 'Ujian berhasil diperbarui.' };
+    return { success: true, data: { examId }, message: isNew ? 'Ujian baru berhasil dibuat.' : 'Ujian berhasil diperbarui.' };
 }
 
-async function toggleExamPortal(examId, showInPortal) {
+async function toggleExamPortal(examId, showInPortal, userSession) {
     await ensureDbInitialized();
     const examsMap = (await kv.get('db:exams')) || {};
-    if (examsMap[examId]) {
-        const newVis = showInPortal !== undefined ? Boolean(showInPortal) : (examsMap[examId].showInPortal === false);
-        examsMap[examId].showInPortal = newVis;
-        await kv.set('db:exams', examsMap);
-        return {
-            success: true,
-            data: { examId, showInPortal: newVis },
-            message: 'Visibilitas ujian berhasil diubah.'
-        };
+    const existing = examsMap[examId];
+    if (!existing) {
+        return { success: false, message: 'Ujian tidak ditemukan.' };
     }
-    return { success: false, message: 'Ujian tidak ditemukan.' };
+
+    if (userSession && typeof userSession === 'object' && userSession.role !== 'ADMIN') {
+        if (!isExamOwnerOrAdmin(existing, userSession)) {
+            return { success: false, message: 'Akses ditolak. Hanya pemilik ujian atau Admin yang dapat mengubah visibilitas.' };
+        }
+    }
+
+    const newVis = showInPortal !== undefined ? Boolean(showInPortal) : (existing.showInPortal === false);
+    existing.showInPortal = newVis;
+    examsMap[examId] = existing;
+    await kv.set('db:exams', examsMap);
+
+    let full = (await kv.get(`exam:full:${examId}`)) || {};
+    full.showInPortal = newVis;
+    await kv.set(`exam:full:${examId}`, full);
+
+    return {
+        success: true,
+        data: { examId, showInPortal: newVis },
+        message: 'Visibilitas ujian berhasil diubah.'
+    };
 }
 
-async function deleteExam(examId) {
+async function deleteExam(examId, userSession) {
     await ensureDbInitialized();
     const examsMap = (await kv.get('db:exams')) || {};
-    if (examsMap[examId]) {
-        examsMap[examId].status = 'ARCHIVED';
-        await kv.set('db:exams', examsMap);
-        return { success: true, message: 'Ujian berhasil diarsipkan.' };
+    const existing = examsMap[examId];
+    if (!existing) {
+        return { success: false, message: 'Ujian tidak ditemukan.' };
     }
-    return { success: false, message: 'Ujian tidak ditemukan.' };
+
+    if (userSession && typeof userSession === 'object' && userSession.role !== 'ADMIN') {
+        if (!isExamOwnerOrAdmin(existing, userSession)) {
+            return { success: false, message: 'Akses ditolak. Anda tidak berhak menghapus ujian milik guru lain.' };
+        }
+    }
+
+    existing.status = 'ARCHIVED';
+    examsMap[examId] = existing;
+    await kv.set('db:exams', examsMap);
+
+    return { success: true, message: 'Ujian berhasil diarsipkan.' };
 }
 
-async function duplicateExam(sourceExamId, ownerTeacherId) {
+async function duplicateExam(sourceExamId, userSession) {
     await ensureDbInitialized();
     const examsMap = (await kv.get('db:exams')) || {};
     const src = examsMap[sourceExamId];
     if (!src) return { success: false, message: 'Ujian tidak ditemukan.' };
 
+    if (userSession && typeof userSession === 'object' && userSession.role !== 'ADMIN') {
+        if (!isExamOwnerOrAdmin(src, userSession)) {
+            return { success: false, message: 'Akses ditolak. Anda tidak berhak menduplikasi ujian milik guru lain.' };
+        }
+    }
+
+    const sessionObj = typeof userSession === 'object' ? userSession : null;
     const newExamId = 'EXM_' + Math.floor(Math.random() * 90000 + 10000);
     const newExam = {
         ...src,
         examId: newExamId,
         title: src.title + ' (Salinan)',
         status: 'DRAFT',
-        ownerTeacherId: ownerTeacherId || src.ownerTeacherId
+        ownerTeacherId: sessionObj?.teacherId || (typeof userSession === 'string' ? userSession : src.ownerTeacherId),
+        ownerUsername: sessionObj?.username || src.ownerUsername,
+        ownerTeacherName: sessionObj?.teacherName || src.ownerTeacherName,
+        teacherName: sessionObj?.teacherName || src.teacherName,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString()
     };
 
     examsMap[newExamId] = newExam;
@@ -603,5 +699,6 @@ module.exports = {
     getPublicExam,
     getExamResults,
     getStudentAttemptDetail,
-    getExamResultsExportData
+    getExamResultsExportData,
+    isExamOwnerOrAdmin
 };

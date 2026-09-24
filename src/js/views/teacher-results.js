@@ -26,9 +26,16 @@ const renderTeacherResults = async (params) => {
         if (res.success && res.data) {
             summary = res.data.summary || summary;
             results = res.data.results || [];
+        } else {
+            UI.showToast(res.message || 'Akses ditolak atau gagal memuat hasil.', 'error');
+            setTimeout(() => Router.navigate('/dashboard'), 0);
+            return `<div class="loading-full">Mengalihkan...</div>`;
         }
     } catch (e) {
         console.error("Error fetching results:", e);
+        UI.showToast('Gagal memuat hasil ujian.', 'error');
+        setTimeout(() => Router.navigate('/dashboard'), 0);
+        return `<div class="loading-full">Mengalihkan...</div>`;
     }
 
     window.handleExport = async function() {
