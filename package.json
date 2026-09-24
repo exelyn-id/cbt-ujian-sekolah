@@ -1,0 +1,16 @@
+{
+  "name": "cbt-online-smanli",
+  "version": "2.0.0",
+  "description": "CBT Online High-Concurrency Hybrid Engine (Vercel + Google Sheets)",
+  "main": "index.html",
+  "scripts": {
+    "build": "python build.py",
+    "test": "node scratch/test-concurrency.js"
+  },
+  "dependencies": {
+    "@upstash/redis": "^1.34.3"
+  },
+  "devDependencies": {
+    "dotenv": "^16.4.7"
+  }
+}

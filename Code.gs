@@ -80,6 +80,201 @@ function getWebAppUrl() {
 }
 
 // ============================================================================
+// 2B. POST HANDLER FOR VERCEL HIGH-CONCURRENCY BATCH SYNC & REST API
+// ============================================================================
+function doPost(e) {
+  var output = { success: false, message: "Invalid request" };
+  try {
+    var raw = (e && e.postData && e.postData.contents) ? e.postData.contents : "{}";
+    var payload = JSON.parse(raw);
+    var action = payload.action || "";
+
+    // 1. Batch Sync Attempts & Answers from Vercel Queue
+    if (action === "batch_sync_attempts") {
+      output = _batchSyncAttempts(payload.attempts || [], payload.answers || []);
+    }
+    // 2. Export active public exams for Vercel cache
+    else if (action === "get_active_public_exams") {
+      output = getActivePublicExams();
+    }
+    // 3. Export single exam with all questions for Vercel cache
+    else if (action === "get_exam_with_questions") {
+      output = _getExamWithAllQuestions(payload.examId);
+    }
+    // 4. Teacher Login
+    else if (action === "login_teacher") {
+      output = loginTeacher(payload.username, payload.password);
+    }
+    // 5. Teacher Exams
+    else if (action === "get_teacher_exams") {
+      output = getTeacherExams(payload.sessionId);
+    }
+    // 6. Save Exam
+    else if (action === "save_exam") {
+      output = saveExam(payload.sessionId, payload.examData || payload);
+    }
+    // 7. Toggle Portal
+    else if (action === "toggle_exam_portal") {
+      output = toggleExamPortalVisibility(payload.sessionId, payload.examId, payload.showInPortal);
+    }
+    // 8. Delete Exam
+    else if (action === "delete_exam") {
+      output = deleteExam(payload.sessionId, payload.examId);
+    }
+    // 9. Exam Results
+    else if (action === "get_exam_results") {
+      output = getExamResults(payload.sessionId, payload.examId);
+    }
+    else {
+      output = { success: false, message: "Aksi tidak dikenali: " + action };
+    }
+  } catch (err) {
+    console.error("doPost error:", err);
+    output = { success: false, message: "Server error: " + err.message };
+  }
+
+  return ContentService.createTextOutput(JSON.stringify(output))
+    .setMimeType(ContentService.MimeType.JSON);
+}
+
+function _batchSyncAttempts(attempts, answers) {
+  if (!Array.isArray(attempts) || attempts.length === 0) {
+    return _response(true, { message: "Tidak ada data attempts untuk disinkronkan." });
+  }
+
+  var ss = _getSpreadsheet();
+  ensureDatabaseSchema();
+
+  var attemptsSheet = ss.getSheetByName(CONFIG.SHEETS.ATTEMPTS);
+  var answersSheet = ss.getSheetByName(CONFIG.SHEETS.ANSWERS);
+
+  var now = new Date().toISOString();
+
+  // 1. Prepare Attempts rows
+  var attemptRows = [];
+  for (var i = 0; i < attempts.length; i++) {
+    var a = attempts[i];
+    attemptRows.push([
+      a.attemptId,
+      a.examId,
+      a.participantName,
+      a.className,
+      a.nis || "",
+      a.attemptNumber || 1,
+      a.startedAt || now,
+      a.deadlineAt || "",
+      a.submittedAt || now,
+      a.status || "SUBMITTED",
+      a.rawScore || 0,
+      a.maxRawScore || 0,
+      a.finalScore || 0,
+      a.kkm || 75,
+      a.passStatus || "BELUM LULUS",
+      "[]",
+      "[]",
+      a.startedAt || now,
+      a.submittedAt || now
+    ]);
+  }
+
+  // Bulk write attempts in a single write operation
+  if (attemptRows.length > 0 && attemptsSheet) {
+    var lastRowAtt = attemptsSheet.getLastRow();
+    attemptsSheet.getRange(lastRowAtt + 1, 1, attemptRows.length, attemptRows[0].length)
+      .setValues(attemptRows);
+  }
+
+  // 2. Prepare Answers rows
+  var answerRows = [];
+  if (Array.isArray(answers) && answers.length > 0) {
+    for (var j = 0; j < answers.length; j++) {
+      var ans = answers[j];
+      answerRows.push([
+        ans.answerId || ("ANS_" + Math.random().toString(36).substring(2, 9)),
+        ans.attemptId,
+        ans.examId,
+        ans.questionId,
+        ans.studentAnswerJson || "null",
+        ans.savedAt || now,
+        ans.scoreAwarded || 0,
+        ans.isCorrect ? true : false,
+        ans.maxScore || 10
+      ]);
+    }
+  }
+
+  // Bulk write answers in a single write operation
+  if (answerRows.length > 0 && answersSheet) {
+    var lastRowAns = answersSheet.getLastRow();
+    answersSheet.getRange(lastRowAns + 1, 1, answerRows.length, answerRows[0].length)
+      .setValues(answerRows);
+  }
+
+  return _response(true, {
+    syncedAttempts: attemptRows.length,
+    syncedAnswers: answerRows.length,
+    message: "Berhasil menyinkronkan " + attemptRows.length + " data ujian ke Google Spreadsheet."
+  });
+}
+
+function _getExamWithAllQuestions(examId) {
+  if (!examId) return _response(false, null, "examId required");
+  var allExams = _getTableData(CONFIG.SHEETS.EXAMS);
+  var exam = null;
+  for (var i = 0; i < allExams.length; i++) {
+    if (allExams[i].examId === examId) {
+      exam = allExams[i];
+      break;
+    }
+  }
+
+  if (!exam) return _response(false, null, "Ujian tidak ditemukan.");
+
+  var allQ = _getTableData(CONFIG.SHEETS.QUESTIONS);
+  var questions = [];
+  for (var q = 0; q < allQ.length; q++) {
+    var item = allQ[q];
+    if (item.examId === examId && item.status !== "ARCHIVED") {
+      var options = [];
+      try { options = JSON.parse(item.optionsJson || "[]"); } catch (e) {}
+
+      questions.push({
+        id: item.questionId,
+        orderNo: item.orderNo,
+        type: item.type,
+        text: item.questionText,
+        imageUrl: item.imageUrl || "",
+        score: Number(item.score || 10),
+        scoringMethod: item.scoringMethod || "EXACT",
+        correctAnswer: item.correctAnswer,
+        options: options,
+        bottomText: item.bottomText || "",
+        tfType: item.tfType || "BENAR_SALAH"
+      });
+    }
+  }
+
+  // Sort questions by orderNo
+  questions.sort(function(a, b) { return Number(a.orderNo) - Number(b.orderNo); });
+
+  return _response(true, {
+    examId: exam.examId,
+    title: exam.title,
+    subject: exam.subject,
+    material: exam.material,
+    className: exam.className,
+    durationMinutes: Number(exam.durationMinutes || 60),
+    kkm: Number(exam.kkm || 75),
+    maxAttempts: Number(exam.maxAttempts || 1),
+    status: exam.status,
+    showResult: exam.showResult !== false,
+    randomizeQuestions: exam.randomizeQuestions === true,
+    randomizeOptions: exam.randomizeOptions === true,
+    questions: questions
+  });
+}
+
+// ============================================================================
 // 3. DATABASE SETUP & SCHEMA INITIALIZATION
 // ============================================================================
 

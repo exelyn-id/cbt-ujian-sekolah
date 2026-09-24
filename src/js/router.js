@@ -90,14 +90,24 @@ const Router = {
             this.handleRoute();
         };
 
-        // If window.__INITIAL_PARAMS__ already has routing flags, resolve immediately!
-        const initial = (typeof window !== 'undefined' && window.__INITIAL_PARAMS__) || {};
-        if (initial.exam || initial.examId || initial.mode || initial.page || initial.role || initial.portal || initial.view) {
-            resolveInitialRoute(initial);
+        // Priority 1: If window.__INITIAL_PARAMS__ was injected by server doGet(e), resolve IMMEDIATELY (0ms delay)!
+        if (typeof window !== 'undefined' && typeof window.__INITIAL_PARAMS__ !== 'undefined') {
+            resolveInitialRoute(window.__INITIAL_PARAMS__);
+
+            // Asynchronously fetch WEB_APP_URL via google.script.url in background without blocking UI
+            if (typeof google !== 'undefined' && google.script && google.script.url) {
+                try {
+                    google.script.url.getLocation((loc) => {
+                        if (loc && loc.url) {
+                            window.WEB_APP_URL = loc.url.split('?')[0].split('#')[0];
+                        }
+                    });
+                } catch (err) {}
+            }
             return;
         }
 
-        // Retrieve URL parameters via Google Apps Script client API if in GAS, or URLSearchParams
+        // Priority 2: Retrieve URL parameters via Google Apps Script client API if in GAS, or URLSearchParams
         if (typeof google !== 'undefined' && google.script && google.script.url) {
             let resolved = false;
             const timer = setTimeout(() => {
@@ -105,7 +115,7 @@ const Router = {
                     resolved = true;
                     resolveInitialRoute({});
                 }
-            }, 2500);
+            }, 800); // reduced from 2500ms to 800ms for snappy response
 
             try {
                 google.script.url.getLocation((loc) => {

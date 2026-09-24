@@ -44,4 +44,24 @@
         // Fallback timer if events were already dispatched
         setTimeout(startApp, 300);
     }
+
+    // Safety Watchdog: If #app is still displaying the static "Memuat Aplikasi..." after 1500ms, force recovery
+    setTimeout(() => {
+        const app = document.getElementById('app');
+        if (app && app.innerHTML.includes('Memuat Aplikasi...')) {
+            console.warn("Safety Watchdog: Initial loading screen stuck. Forcing route resolution to /login...");
+            try {
+                if (typeof Router !== 'undefined') {
+                    if (!window.location.hash || window.location.hash === '#' || window.location.hash === '#/') {
+                        window.location.hash = '#/login';
+                    }
+                    if (typeof Router.handleRoute === 'function') {
+                        Router.handleRoute();
+                    }
+                }
+            } catch (recoveryErr) {
+                console.error("Watchdog recovery failed:", recoveryErr);
+            }
+        }
+    }, 1500);
 })();

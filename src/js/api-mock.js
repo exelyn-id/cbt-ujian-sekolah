@@ -3,6 +3,39 @@
 // ============================================================================
 
 const isGAS = typeof google !== 'undefined' && Boolean(google.script && google.script.run);
+const isVercel = typeof window !== 'undefined' && (
+    window.location.hostname.includes('vercel.app') ||
+    window.location.hostname === 'localhost' ||
+    window.location.hostname === '127.0.0.1' ||
+    (!isGAS && Boolean(window.location.origin && window.location.origin.startsWith('http')))
+);
+
+async function _callVercel(endpoint, method = 'GET', body = null) {
+    try {
+        const options = {
+            method: method,
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        };
+        if (body && (method === 'POST' || method === 'PUT')) {
+            options.body = JSON.stringify(body);
+        }
+        const res = await fetch(endpoint, options);
+        if (!res.ok) {
+            const errData = await res.json().catch(() => null);
+            return {
+                success: false,
+                data: null,
+                message: (errData && errData.message) || `HTTP Error ${res.status}`
+            };
+        }
+        return await res.json();
+    } catch (err) {
+        console.warn(`[Vercel API] ${endpoint} request failed:`, err.message);
+        return null;
+    }
+}
 
 function _singleCallGAS(functionName, args) {
     return new Promise((resolve) => {
@@ -198,6 +231,10 @@ const api = {
     // 1. AUTH
     async loginTeacher(username, password) {
         if (isGAS) return _callGAS('loginTeacher', username, password);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=login_teacher', 'POST', { username, password });
+            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+        }
 
         await this._delay();
         const mockUsers = {
@@ -235,6 +272,10 @@ const api = {
     // 2. EXAM CRUD
     async getTeacherExams(sessionId) {
         if (isGAS) return _callGAS('getTeacherExams', sessionId);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=get_teacher_exams', 'POST', { sessionId });
+            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+        }
 
         await this._delay();
         const db = _getMockDB();
@@ -249,6 +290,10 @@ const api = {
 
     async toggleExamPortalVisibility(sessionId, examId, showInPortal) {
         if (isGAS) return _callGAS('toggleExamPortalVisibility', sessionId, examId, showInPortal);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=toggle_exam_portal', 'POST', { sessionId, examId, showInPortal });
+            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+        }
 
         await this._delay();
         const db = _getMockDB();
@@ -278,6 +323,10 @@ const api = {
 
     async saveExam(sessionId, examData) {
         if (isGAS) return _callGAS('saveExam', sessionId, examData);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=save_exam', 'POST', { sessionId, examData });
+            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+        }
 
         await this._delay();
         const db = _getMockDB();
@@ -304,6 +353,10 @@ const api = {
 
     async deleteExam(sessionId, examId) {
         if (isGAS) return _callGAS('deleteExam', sessionId, examId);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=delete_exam', 'POST', { sessionId, examId });
+            if (vRes && (vRes.success || vRes.message !== 'HTTP Error 404')) return vRes;
+        }
 
         await this._delay();
         const db = _getMockDB();
@@ -364,6 +417,10 @@ const api = {
     // 4. PARTICIPANT / STUDENT
     async getActivePublicExams() {
         if (isGAS) return _callGAS('getActivePublicExams');
+        if (isVercel) {
+            const vRes = await _callVercel('/api/exams');
+            if (vRes && vRes.success && Array.isArray(vRes.data) && vRes.data.length > 0) return vRes;
+        }
 
         await this._delay();
         const db = _getMockDB();
@@ -388,6 +445,10 @@ const api = {
 
     async getPublicExam(examId) {
         if (isGAS) return _callGAS('getPublicExam', examId);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/exams?id=' + encodeURIComponent(examId));
+            if (vRes && vRes.success && vRes.data) return vRes;
+        }
 
         await this._delay();
         const db = _getMockDB();
@@ -406,6 +467,25 @@ const api = {
 
     async startExamAttempt(examId, participantData) {
         if (isGAS) return _callGAS('startExamAttempt', examId, participantData);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/exams?id=' + encodeURIComponent(examId));
+            if (vRes && vRes.success && vRes.data) {
+                const exam = vRes.data;
+                const attemptId = 'ATT_' + Date.now().toString(36).toUpperCase() + '_' + Math.floor(Math.random() * 9000 + 1000);
+                const deadlineAt = Date.now() + (Number(exam.durationMinutes || 60) * 60 * 1000);
+                return {
+                    success: true,
+                    data: {
+                        attemptId: attemptId,
+                        deadlineAt: deadlineAt,
+                        participantName: participantData.name,
+                        className: participantData.className,
+                        nis: participantData.nis,
+                        questions: exam.questions || []
+                    }
+                };
+            }
+        }
 
         await this._delay();
         const db = _getMockDB();
@@ -443,6 +523,15 @@ const api = {
 
     async saveAttemptAnswers(attemptId, answersMap) {
         if (isGAS) return _callGAS('saveAttemptAnswers', attemptId, answersMap);
+        if (isVercel) {
+            const examId = (AppState.currentExam && AppState.currentExam.examId) || '';
+            const vRes = await _callVercel('/api/autosave', 'POST', {
+                attemptId: attemptId,
+                examId: examId,
+                answersMap: answersMap
+            });
+            if (vRes && vRes.success) return vRes;
+        }
 
         await this._delay(200);
         return { success: true, savedAt: Date.now() };
@@ -450,6 +539,16 @@ const api = {
 
     async submitExamAttempt(attemptId, finalAnswersMap) {
         if (isGAS) return _callGAS('submitExamAttempt', attemptId, finalAnswersMap);
+        if (isVercel) {
+            const examId = (AppState.currentExam && AppState.currentExam.examId) || '';
+            const vRes = await _callVercel('/api/submit', 'POST', {
+                attemptId: attemptId,
+                examId: examId,
+                participant: AppState.attempt,
+                answers: finalAnswersMap
+            });
+            if (vRes && vRes.success) return vRes;
+        }
 
         await this._delay(800);
         const db = _getMockDB();
@@ -491,6 +590,10 @@ const api = {
     // 5. RESULTS & EXPORT
     async getExamResults(sessionId, examId) {
         if (isGAS) return _callGAS('getExamResults', sessionId, examId);
+        if (isVercel) {
+            const vRes = await _callVercel('/api/teacher?action=get_exam_results', 'POST', { sessionId, examId });
+            if (vRes && vRes.success) return vRes;
+        }
 
         await this._delay();
         const db = _getMockDB();
