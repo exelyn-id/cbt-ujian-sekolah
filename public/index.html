@@ -3010,7 +3010,11 @@ window.handleLogout = async function() {
 
 window.copyExamLink = function(examId) {
     let baseUrl = '';
-    if (typeof window !== 'undefined' && window.location.hostname && (window.location.hostname.includes('vercel.app') || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    const isGoogleScript = typeof window !== 'undefined' && window.location.hostname && (
+        window.location.hostname.includes('script.google.com') ||
+        window.location.hostname.includes('googleusercontent.com')
+    );
+    if (!isGoogleScript && typeof window !== 'undefined' && window.location.origin && window.location.origin.startsWith('http')) {
         baseUrl = window.location.origin + window.location.pathname;
     } else {
         baseUrl = (typeof window !== 'undefined' && (window.__WEB_APP_URL__ || window.WEB_APP_URL)) || '';
@@ -3049,7 +3053,11 @@ window.copyExamLink = function(examId) {
 
 window.copyStudentPortalLink = function() {
     let baseUrl = '';
-    if (typeof window !== 'undefined' && window.location.hostname && (window.location.hostname.includes('vercel.app') || window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')) {
+    const isGoogleScript = typeof window !== 'undefined' && window.location.hostname && (
+        window.location.hostname.includes('script.google.com') ||
+        window.location.hostname.includes('googleusercontent.com')
+    );
+    if (!isGoogleScript && typeof window !== 'undefined' && window.location.origin && window.location.origin.startsWith('http')) {
         baseUrl = window.location.origin + window.location.pathname;
     } else {
         baseUrl = (typeof window !== 'undefined' && (window.__WEB_APP_URL__ || window.WEB_APP_URL)) || '';
