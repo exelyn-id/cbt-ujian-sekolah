@@ -167,53 +167,158 @@ Router.addRoute('/question-builder', async (params) => {
         renderQuestionsList();
     };
 
-    function getQuestionCustomPointsTotal(q) {
-        if (!q || !Array.isArray(q.options) || q.scoringMethod !== 'PARTIAL') return 0;
-        let sum = 0;
-        let hasCustom = false;
-        if (q.type === 'TRUE_FALSE') {
-            q.options.forEach(o => {
-                if (o.score !== undefined && o.score !== null && o.score !== '' && Number(o.score) > 0) {
-                    sum += Number(o.score);
-                    hasCustom = true;
-                }
-            });
-        } else if (q.type === 'MCQ_COMPLEX') {
-            const answerArr = Array.isArray(q.correctAnswer) ? q.correctAnswer : [];
-            q.options.forEach(o => {
-                if (answerArr.includes(o.id) && o.score !== undefined && o.score !== null && o.score !== '' && Number(o.score) > 0) {
-                    sum += Number(o.score);
-                    hasCustom = true;
-                }
-            });
-            if (!hasCustom) {
-                q.options.forEach(o => {
-                    if (o.score !== undefined && o.score !== null && o.score !== '' && Number(o.score) > 0) {
-                        sum += Number(o.score);
-                        hasCustom = true;
-                    }
-                });
-            }
+    function validatePartialOptionScoring(q) {
+        if (!q || !Array.isArray(q.options) || q.scoringMethod !== 'PARTIAL') {
+            return { status: 'OK', hasCustom: false, totalPoints: 0, qScore: Number(q ? q.score : 10), diff: 0, missingItems: [] };
         }
-        return hasCustom ? Math.round(sum * 100) / 100 : 0;
+
+        const qScore = Number(q.score || 0);
+
+        if (q.type === 'TRUE_FALSE') {
+            const hasCustom = q.options.some(o => o.score !== undefined && o.score !== null && o.score !== '' && !isNaN(Number(o.score)));
+            if (!hasCustom) {
+                return { status: 'OK', hasCustom: false, totalPoints: 0, qScore, diff: 0, missingItems: [] };
+            }
+
+            const missingItems = [];
+            let totalPoints = 0;
+            q.options.forEach((o, idx) => {
+                if (o.score === undefined || o.score === null || o.score === '' || isNaN(Number(o.score))) {
+                    missingItems.push({ id: o.id, label: `Pernyataan #${idx + 1}` });
+                } else {
+                    totalPoints += Number(o.score);
+                }
+            });
+            totalPoints = Math.round(totalPoints * 100) / 100;
+
+            if (missingItems.length > 0) {
+                return {
+                    status: 'INCOMPLETE',
+                    hasCustom: true,
+                    totalPoints,
+                    qScore,
+                    diff: Math.round((totalPoints - qScore) * 100) / 100,
+                    missingItems,
+                    message: `Ada ${missingItems.length} pernyataan (${missingItems.map(m => m.label).join(', ')}) yang belum diberi skor poin!`
+                };
+            }
+
+            const diff = Math.round((totalPoints - qScore) * 100) / 100;
+            if (diff > 0) {
+                return {
+                    status: 'MISMATCH_MORE',
+                    hasCustom: true,
+                    totalPoints,
+                    qScore,
+                    diff,
+                    missingItems: [],
+                    message: `Total poin pernyataan (${totalPoints}) melebihi Skor Soal (${qScore}). Lebih ${diff} poin.`
+                };
+            } else if (diff < 0) {
+                return {
+                    status: 'MISMATCH_LESS',
+                    hasCustom: true,
+                    totalPoints,
+                    qScore,
+                    diff,
+                    missingItems: [],
+                    message: `Total poin pernyataan (${totalPoints}) kurang dari Skor Soal (${qScore}). Kurang ${Math.abs(diff)} poin.`
+                };
+            }
+
+            return { status: 'OK', hasCustom: true, totalPoints, qScore, diff: 0, missingItems: [] };
+        }
+
+        if (q.type === 'MCQ_COMPLEX') {
+            const answerArr = Array.isArray(q.correctAnswer) ? q.correctAnswer : [];
+            const correctOptions = q.options.filter(o => answerArr.includes(o.id));
+            const hasCustom = q.options.some(o => o.score !== undefined && o.score !== null && o.score !== '' && !isNaN(Number(o.score)));
+
+            if (!hasCustom) {
+                return { status: 'OK', hasCustom: false, totalPoints: 0, qScore, diff: 0, missingItems: [] };
+            }
+
+            const missingItems = [];
+            let totalPoints = 0;
+            correctOptions.forEach(o => {
+                if (o.score === undefined || o.score === null || o.score === '' || isNaN(Number(o.score))) {
+                    missingItems.push({ id: o.id, label: `Opsi ${o.id}` });
+                } else {
+                    totalPoints += Number(o.score);
+                }
+            });
+            totalPoints = Math.round(totalPoints * 100) / 100;
+
+            if (missingItems.length > 0) {
+                return {
+                    status: 'INCOMPLETE',
+                    hasCustom: true,
+                    totalPoints,
+                    qScore,
+                    diff: Math.round((totalPoints - qScore) * 100) / 100,
+                    missingItems,
+                    message: `Ada ${missingItems.length} opsi kunci (${missingItems.map(m => m.label).join(', ')}) yang belum diberi skor poin!`
+                };
+            }
+
+            const diff = Math.round((totalPoints - qScore) * 100) / 100;
+            if (diff > 0) {
+                return {
+                    status: 'MISMATCH_MORE',
+                    hasCustom: true,
+                    totalPoints,
+                    qScore,
+                    diff,
+                    missingItems: [],
+                    message: `Total poin opsi kunci (${totalPoints}) melebihi Skor Soal (${qScore}). Lebih ${diff} poin.`
+                };
+            } else if (diff < 0) {
+                return {
+                    status: 'MISMATCH_LESS',
+                    hasCustom: true,
+                    totalPoints,
+                    qScore,
+                    diff,
+                    missingItems: [],
+                    message: `Total poin opsi kunci (${totalPoints}) kurang dari Skor Soal (${qScore}). Kurang ${Math.abs(diff)} poin.`
+                };
+            }
+
+            return { status: 'OK', hasCustom: true, totalPoints, qScore, diff: 0, missingItems: [] };
+        }
+
+        return { status: 'OK', hasCustom: false, totalPoints: 0, qScore, diff: 0, missingItems: [] };
+    }
+
+    function getQuestionCustomPointsTotal(q) {
+        const val = validatePartialOptionScoring(q);
+        return val.totalPoints;
     }
 
     window.checkQuestionScoreWarning = function(qIndex) {
         const q = questions[qIndex];
         if (!q) return;
+
+        const validation = validatePartialOptionScoring(q);
         const warningEl = document.getElementById(`q-score-warning-${qIndex}`);
         const scoreInput = document.getElementById(`q-score-input-${qIndex}`);
         const scoreBadge = document.getElementById(`q-score-badge-${qIndex}`);
-        const totalPoints = getQuestionCustomPointsTotal(q);
-        const qScore = Number(q.score || 0);
-
-        const isExceeded = (q.scoringMethod === 'PARTIAL' && totalPoints > 0 && totalPoints > qScore);
 
         if (scoreInput) {
-            if (isExceeded) {
+            if (validation.status === 'INCOMPLETE') {
+                scoreInput.style.borderColor = '#f59e0b';
+                scoreInput.style.backgroundColor = '#fffbeb';
+                scoreInput.style.color = '#b45309';
+                scoreInput.style.fontWeight = 'bold';
+            } else if (validation.status === 'MISMATCH_MORE' || validation.status === 'MISMATCH_LESS') {
                 scoreInput.style.borderColor = '#ef4444';
                 scoreInput.style.backgroundColor = '#fef2f2';
                 scoreInput.style.color = '#b91c1c';
+                scoreInput.style.fontWeight = 'bold';
+            } else if (validation.status === 'OK' && validation.hasCustom) {
+                scoreInput.style.borderColor = '#10b981';
+                scoreInput.style.backgroundColor = '#f0fdf4';
+                scoreInput.style.color = '#047857';
                 scoreInput.style.fontWeight = 'bold';
             } else {
                 scoreInput.style.borderColor = '';
@@ -224,19 +329,100 @@ Router.addRoute('/question-builder', async (params) => {
         }
 
         if (scoreBadge) {
-            if (isExceeded) {
+            if (validation.status === 'INCOMPLETE') {
                 scoreBadge.style.display = 'inline-flex';
-                scoreBadge.innerHTML = `<i class="ph ph-warning-circle"></i> Opsi total: ${totalPoints} poin`;
+                scoreBadge.style.color = '#b45309';
+                scoreBadge.innerHTML = `<i class="ph ph-warning-circle"></i> Opsi belum lengkap`;
+            } else if (validation.status === 'MISMATCH_LESS') {
+                scoreBadge.style.display = 'inline-flex';
+                scoreBadge.style.color = '#dc2626';
+                scoreBadge.innerHTML = `<i class="ph ph-warning-circle"></i> Kurang ${Math.abs(validation.diff)} poin (Opsi: ${validation.totalPoints})`;
+            } else if (validation.status === 'MISMATCH_MORE') {
+                scoreBadge.style.display = 'inline-flex';
+                scoreBadge.style.color = '#dc2626';
+                scoreBadge.innerHTML = `<i class="ph ph-warning-circle"></i> Lebih ${validation.diff} poin (Opsi: ${validation.totalPoints})`;
+            } else if (validation.status === 'OK' && validation.hasCustom) {
+                scoreBadge.style.display = 'inline-flex';
+                scoreBadge.style.color = '#15803d';
+                scoreBadge.innerHTML = `<i class="ph ph-check-circle"></i> Pas (${validation.totalPoints} poin)`;
             } else {
                 scoreBadge.style.display = 'none';
                 scoreBadge.innerHTML = '';
             }
         }
 
+        // Highlight missing inputs in red
+        if (q.type === 'TRUE_FALSE') {
+            (q.options || []).forEach((o, sIdx) => {
+                const inputEl = document.getElementById(`stmt-score-input-${qIndex}-${sIdx}`);
+                if (inputEl) {
+                    const isMissing = validation.status === 'INCOMPLETE' && validation.missingItems.some(m => m.id === o.id);
+                    if (isMissing) {
+                        inputEl.style.borderColor = '#ef4444';
+                        inputEl.style.backgroundColor = '#fef2f2';
+                        inputEl.style.color = '#b91c1c';
+                        inputEl.placeholder = 'Wajib!';
+                    } else {
+                        inputEl.style.borderColor = '#86efac';
+                        inputEl.style.backgroundColor = '#f0fdf4';
+                        inputEl.style.color = '#15803d';
+                        inputEl.placeholder = 'Auto';
+                    }
+                }
+            });
+        } else if (q.type === 'MCQ_COMPLEX') {
+            const answerArr = Array.isArray(q.correctAnswer) ? q.correctAnswer : [];
+            (q.options || []).forEach((opt, optIdx) => {
+                const inputEl = document.getElementById(`opt-score-input-${qIndex}-${optIdx}`);
+                if (inputEl) {
+                    const isCorrect = answerArr.includes(opt.id);
+                    const isMissing = isCorrect && validation.status === 'INCOMPLETE' && validation.missingItems.some(m => m.id === opt.id);
+                    if (isMissing) {
+                        inputEl.style.borderColor = '#ef4444';
+                        inputEl.style.backgroundColor = '#fef2f2';
+                        inputEl.style.color = '#b91c1c';
+                        inputEl.placeholder = 'Wajib!';
+                    } else if (isCorrect) {
+                        inputEl.style.borderColor = '#86efac';
+                        inputEl.style.backgroundColor = 'rgba(34, 197, 94, 0.08)';
+                        inputEl.style.color = '#15803d';
+                        inputEl.placeholder = 'Auto';
+                    } else {
+                        inputEl.style.borderColor = 'var(--border-color)';
+                        inputEl.style.backgroundColor = 'var(--bg-base)';
+                        inputEl.style.color = 'var(--text-secondary)';
+                        inputEl.placeholder = '0';
+                    }
+                }
+            });
+        }
+
         if (warningEl) {
-            if (isExceeded) {
+            if (validation.status === 'INCOMPLETE') {
+                const missingText = validation.missingItems.map(m => `<strong>${m.label}</strong>`).join(', ');
                 warningEl.style.display = 'block';
+                warningEl.innerHTML = `
+                    <div class="p-3 mb-3 flex items-center justify-between text-xs" style="background: #fffbeb; border: 1.5px solid #fcd34d; border-radius: var(--radius-sm); color: #92400e; gap: 0.75rem; flex-wrap: wrap; box-shadow: var(--shadow-sm);">
+                        <div class="flex items-center gap-2.5">
+                            <span style="background: #fef3c7; color: #d97706; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0;">
+                                <i class="ph ph-warning-circle"></i>
+                            </span>
+                            <div>
+                                <div class="font-bold" style="font-size: 0.82rem; color: #92400e;">
+                                    Ada opsi/pernyataan yang belum diberi skor!
+                                </div>
+                                <div class="mt-0.5" style="color: #b45309; font-size: 0.75rem;">
+                                    Karena salah satu opsi/pernyataan sudah diberi skor, maka ${missingText} juga <strong>wajib diisi skor</strong> agar totalnya dapat dihitung persis dengan Skor Soal.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            } else if (validation.status === 'MISMATCH_MORE' || validation.status === 'MISMATCH_LESS') {
+                const isMore = validation.status === 'MISMATCH_MORE';
                 const labelTarget = q.type === 'TRUE_FALSE' ? 'Pernyataan' : 'Opsi Kunci';
+                const diffText = isMore ? `Lebih <strong>${validation.diff} poin</strong>` : `Masih kurang <strong>${Math.abs(validation.diff)} poin</strong>`;
+                warningEl.style.display = 'block';
                 warningEl.innerHTML = `
                     <div class="p-3 mb-3 flex items-center justify-between text-xs" style="background: #fef2f2; border: 1.5px solid #f87171; border-radius: var(--radius-sm); color: #991b1b; gap: 0.75rem; flex-wrap: wrap; box-shadow: var(--shadow-sm);">
                         <div class="flex items-center gap-2.5">
@@ -245,16 +431,26 @@ Router.addRoute('/question-builder', async (params) => {
                             </span>
                             <div>
                                 <div class="font-bold" style="font-size: 0.82rem; color: #991b1b;">
-                                    Peringatan: Total Poin ${labelTarget} (${totalPoints}) Melebihi Skor Soal (${qScore})!
+                                    Total Poin ${labelTarget} (${validation.totalPoints}) Tidak Sama dengan Skor Soal (${validation.qScore})!
                                 </div>
                                 <div class="mt-0.5" style="color: #b91c1c; font-size: 0.75rem;">
-                                    Harap ubah <strong>Skor / Poin Soal</strong> minimal menjadi <strong>${totalPoints}</strong> agar penilaian parsial siswa akurat dan tidak terpotong.
+                                    ${diffText}. Total poin pada opsi/pernyataan <strong>harus persis sama</strong> dengan Skor Soal agar penilaian parsial siswa valid.
                                 </div>
                             </div>
                         </div>
                         <button type="button" class="btn btn-sm flex items-center gap-1" onclick="syncQuestionScoreWithCustomPoints(${qIndex})" style="background: #dc2626; color: white; border: none; font-size: 0.75rem; padding: 0.35rem 0.75rem; font-weight: 600; flex-shrink: 0; border-radius: var(--radius-sm); cursor: pointer;">
-                            <i class="ph ph-arrow-up-right"></i> Ubah Skor Soal Jadi ${totalPoints}
+                            <i class="ph ph-arrow-up-right"></i> Samakan Skor Soal Jadi ${validation.totalPoints}
                         </button>
+                    </div>
+                `;
+            } else if (validation.status === 'OK' && validation.hasCustom) {
+                warningEl.style.display = 'block';
+                warningEl.innerHTML = `
+                    <div class="p-2.5 mb-3 flex items-center justify-between text-xs" style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: var(--radius-sm); color: #166534; gap: 0.5rem; flex-wrap: wrap;">
+                        <div class="flex items-center gap-2">
+                            <i class="ph ph-check-circle" style="font-size: 1.25rem; color: #16a34a; flex-shrink: 0;"></i>
+                            <span><strong>Total Poin Opsi Pas:</strong> Total nilai opsi (${validation.totalPoints} poin) sudah <strong>persis sama</strong> dengan Skor Soal (${validation.qScore} poin).</span>
+                        </div>
                     </div>
                 `;
             } else {
@@ -292,28 +488,12 @@ Router.addRoute('/question-builder', async (params) => {
     window.syncQuestionScoreWithCustomPoints = function(qIndex) {
         const q = questions[qIndex];
         if (!q || !Array.isArray(q.options)) return;
-        let sum = 0;
-        if (q.type === 'TRUE_FALSE') {
-            q.options.forEach(o => {
-                if (o.score !== undefined && o.score !== null && o.score !== '') {
-                    sum += Number(o.score);
-                }
-            });
-        } else if (q.type === 'MCQ_COMPLEX') {
-            const answerArr = Array.isArray(q.correctAnswer) ? q.correctAnswer : [];
-            q.options.forEach(o => {
-                if (answerArr.includes(o.id) && o.score !== undefined && o.score !== null && o.score !== '') {
-                    sum += Number(o.score);
-                }
-            });
-            if (sum === 0) {
-                q.options.forEach(o => {
-                    if (o.score !== undefined && o.score !== null && o.score !== '') {
-                        sum += Number(o.score);
-                    }
-                });
-            }
+        const validation = validatePartialOptionScoring(q);
+        if (validation.status === 'INCOMPLETE') {
+            UI.showToast('Harap lengkapi skor pada semua opsi/pernyataan kunci terlebih dahulu!', 'warning');
+            return;
         }
+        let sum = validation.totalPoints;
         if (sum > 0) {
             q.score = Math.round(sum * 100) / 100;
             const scoreInput = document.getElementById(`q-score-input-${qIndex}`);
@@ -478,6 +658,9 @@ Router.addRoute('/question-builder', async (params) => {
             arr = arr.filter(id => id !== optId);
         }
         q.correctAnswer = arr;
+        if (q.scoringMethod === 'PARTIAL') {
+            checkQuestionScoreWarning(qIndex);
+        }
     };
 
     window.triggerImageUpload = function(targetType, qIndex, optIndex = null) {
@@ -526,6 +709,7 @@ Router.addRoute('/question-builder', async (params) => {
             `;
         } else {
             cardsHtml = questions.map((q, qIndex) => {
+                const validation = validatePartialOptionScoring(q);
                 let optionsHtml = '';
                 if (q.type === 'MCQ') {
                     optionsHtml = q.options.map((opt, optIndex) => `
@@ -615,17 +799,22 @@ Router.addRoute('/question-builder', async (params) => {
                                                             </label>
                                                         </div>
                                                     </td>
-                                                    ${isPartial ? `
-                                                        <td style="padding: 6px 10px; text-align: center; vertical-align: middle;">
-                                                            <input type="number" class="input-control" 
-                                                                   style="padding: 0.35rem 0.5rem; width: 75px; text-align: center; font-weight: bold; margin: 0 auto; color: #15803d; background: #f0fdf4; border-color: #86efac;" 
-                                                                   value="${(opt.score !== undefined && opt.score !== null && opt.score !== '') ? opt.score : ''}" 
-                                                                   placeholder="Auto" 
-                                                                   min="0" step="any"
-                                                                   oninput="updateStatementScore(${qIndex}, ${sIdx}, this.value)" 
-                                                                   title="Poin untuk pernyataan ini jika dijawab sesuai kunci. Kosongkan untuk bagi rata.">
-                                                        </td>
-                                                    ` : ''}
+                                                    ${isPartial ? (() => {
+                                                        const isMissing = validation.status === 'INCOMPLETE' && validation.missingItems.some(m => m.id === opt.id);
+                                                        const hasVal = opt.score !== undefined && opt.score !== null && opt.score !== '';
+                                                        return `
+                                                            <td style="padding: 6px 10px; text-align: center; vertical-align: middle;">
+                                                                <input type="number" class="input-control" 
+                                                                       id="stmt-score-input-${qIndex}-${sIdx}"
+                                                                       style="padding: 0.35rem 0.5rem; width: 75px; text-align: center; font-weight: bold; margin: 0 auto; ${isMissing ? 'color: #b91c1c; background: #fef2f2; border-color: #ef4444;' : (hasVal ? 'color: #15803d; background: #f0fdf4; border-color: #86efac;' : 'color: var(--text-secondary); background: var(--bg-base); border-color: var(--border-color);')}" 
+                                                                       value="${hasVal ? opt.score : ''}" 
+                                                                       placeholder="${isMissing ? 'Wajib!' : 'Auto'}" 
+                                                                       min="0" step="any"
+                                                                       oninput="updateStatementScore(${qIndex}, ${sIdx}, this.value)" 
+                                                                       title="Poin untuk pernyataan ini jika dijawab sesuai kunci. Kosongkan untuk bagi rata.">
+                                                            </td>
+                                                        `;
+                                                    })() : ''}
                                                     <td style="padding: 6px 10px; text-align: center; vertical-align: middle;">
                                                         <button type="button" class="btn btn-icon btn-secondary btn-sm text-error" onclick="removeStatement(${qIndex}, ${sIdx})" title="Hapus Pernyataan" ${q.options.length <= 1 ? 'disabled' : ''}>
                                                             <i class="ph ph-trash"></i>
@@ -642,13 +831,18 @@ Router.addRoute('/question-builder', async (params) => {
                                     <i class="ph ph-plus"></i> Tambah Pernyataan ${q.options.length >= 5 ? '(Maksimal 5)' : `(${q.options.length}/5)`}
                                 </button>
                                 ${isPartial ? (() => {
-                                    let cSum = 0;
-                                    q.options.forEach(o => { if (o.score !== undefined && o.score !== null && o.score !== '') cSum += Number(o.score); });
-                                    return cSum > 0 ? `
-                                        <button type="button" class="btn btn-secondary btn-sm" onclick="syncQuestionScoreWithCustomPoints(${qIndex})" style="font-size: 0.75rem; padding: 3px 8px; color: #15803d; font-weight: 600;" title="Klik untuk menyamakan Skor Total Soal dengan jumlah total poin pernyataan">
-                                            <i class="ph ph-equals"></i> Total Poin: ${cSum} (Klik untuk Samakan Skor)
-                                        </button>
-                                    ` : '<span class="text-xs text-muted">Isi kolom Poin jika ingin bobot antar pernyataan tidak imbang</span>';
+                                    if (validation.status === 'INCOMPLETE') {
+                                        return `<span class="badge" style="background:#fef3c7; color:#b45309; font-size:0.72rem; padding: 3px 8px;"><i class="ph ph-warning-circle"></i> ${validation.missingItems.length} pernyataan belum diberi skor</span>`;
+                                    } else if (validation.status === 'MISMATCH_MORE' || validation.status === 'MISMATCH_LESS') {
+                                        return `
+                                            <button type="button" class="btn btn-secondary btn-sm" onclick="syncQuestionScoreWithCustomPoints(${qIndex})" style="font-size: 0.75rem; padding: 3px 8px; color: #dc2626; font-weight: 600;" title="Klik untuk menyamakan Skor Total Soal dengan jumlah total poin pernyataan">
+                                                <i class="ph ph-equals"></i> Total Poin: ${validation.totalPoints} (Klik untuk Samakan Skor)
+                                            </button>
+                                        `;
+                                    } else if (validation.status === 'OK' && validation.hasCustom) {
+                                        return `<span class="badge" style="background:#dcfce7; color:#15803d; font-size:0.72rem; padding: 3px 8px;"><i class="ph ph-check-circle"></i> Total Poin Pas (${validation.totalPoints})</span>`;
+                                    }
+                                    return '<span class="text-xs text-muted">Isi kolom Poin jika ingin bobot antar pernyataan tidak imbang</span>';
                                 })() : ''}
                             </div>
                         </div>
@@ -664,17 +858,22 @@ Router.addRoute('/question-builder', async (params) => {
                                     <input type="checkbox" ${isChecked ? 'checked' : ''} onchange="toggleComplexAnswer(${qIndex}, '${opt.id}', this.checked)" style="width:1.25rem; height:1.25rem; cursor:pointer; flex-shrink: 0;" title="Centang jika merupakan kunci benar">
                                     <input type="text" class="input-control opt-text-input" style="padding:0.4rem; flex-grow: 1;" value="${escapeHtml(opt.text)}" oninput="updateOptionText(${qIndex}, ${optIndex}, this.value)" placeholder="Teks opsi ${opt.id}">
                                 </div>
-                                ${isPartial ? `
-                                    <div class="flex items-center gap-1" style="flex-shrink: 0; background: ${isChecked ? 'rgba(34, 197, 94, 0.08)' : 'var(--bg-base)'}; padding: 3px 6px; border-radius: var(--radius-sm); border: 1px solid ${isChecked ? '#86efac' : 'var(--border-color)'};" title="Atur poin khusus untuk opsi ${opt.id}">
-                                        <span class="text-xs font-semibold ${isChecked ? 'text-success' : 'text-muted'}">Poin:</span>
-                                        <input type="number" class="input-control" 
-                                               style="padding: 0.25rem 0.4rem; width: 62px; text-align: center; font-weight: bold; color: ${isChecked ? '#15803d' : 'var(--text-secondary)'};" 
-                                               value="${(opt.score !== undefined && opt.score !== null && opt.score !== '') ? opt.score : ''}" 
-                                               placeholder="${isChecked ? 'Auto' : '0'}" 
-                                               min="0" step="any"
-                                               oninput="updateOptionScore(${qIndex}, ${optIndex}, this.value)">
-                                    </div>
-                                ` : ''}
+                                ${isPartial ? (() => {
+                                    const isMissing = isChecked && validation.status === 'INCOMPLETE' && validation.missingItems.some(m => m.id === opt.id);
+                                    const hasVal = opt.score !== undefined && opt.score !== null && opt.score !== '';
+                                    return `
+                                        <div class="flex items-center gap-1" style="flex-shrink: 0; background: ${isMissing ? '#fef2f2' : (isChecked ? 'rgba(34, 197, 94, 0.08)' : 'var(--bg-base)')}; padding: 3px 6px; border-radius: var(--radius-sm); border: 1px solid ${isMissing ? '#ef4444' : (isChecked ? '#86efac' : 'var(--border-color)')};" title="Atur poin khusus untuk opsi ${opt.id}">
+                                            <span class="text-xs font-semibold" style="color: ${isMissing ? '#dc2626' : (isChecked ? '#16a34a' : 'var(--text-muted)')};">Poin:</span>
+                                            <input type="number" class="input-control" 
+                                                   id="opt-score-input-${qIndex}-${optIndex}"
+                                                   style="padding: 0.25rem 0.4rem; width: 62px; text-align: center; font-weight: bold; ${isMissing ? 'color: #b91c1c; background: #ffffff; border-color: #ef4444;' : (isChecked ? 'color: #15803d;' : 'color: var(--text-secondary);')}" 
+                                                   value="${hasVal ? opt.score : ''}" 
+                                                   placeholder="${isMissing ? 'Wajib!' : (isChecked ? 'Auto' : '0')}" 
+                                                   min="0" step="any"
+                                                   oninput="updateOptionScore(${qIndex}, ${optIndex}, this.value)">
+                                        </div>
+                                    `;
+                                })() : ''}
                                 <div class="opt-extra">
                                     <input type="text" class="input-control" style="padding:0.4rem; width: 130px;" value="${escapeHtml(opt.imageUrl || '')}" oninput="updateOptionImage(${qIndex}, ${optIndex}, this.value)" onpaste="handlePasteImage(event, 'option', ${qIndex}, ${optIndex})" placeholder="URL Gambar">
                                     <button type="button" class="btn btn-icon btn-secondary btn-sm" onclick="triggerImageUpload('option', ${qIndex}, ${optIndex})" title="Upload Gambar Opsi"><i class="ph ph-upload-simple"></i></button>
@@ -686,28 +885,109 @@ Router.addRoute('/question-builder', async (params) => {
                     }).join('');
 
                     if (isPartial) {
-                        let customSum = 0;
-                        q.options.forEach(o => {
-                            if (answerArr.includes(o.id) && o.score !== undefined && o.score !== null && o.score !== '') {
-                                customSum += Number(o.score);
-                            }
-                        });
+                        let bottomSnippet = '';
+                        if (validation.status === 'INCOMPLETE') {
+                            bottomSnippet = `<span class="badge" style="background:#fef3c7; color:#b45309; font-size:0.72rem; padding: 3px 8px; flex-shrink: 0;"><i class="ph ph-warning-circle"></i> Opsi kunci belum lengkap</span>`;
+                        } else if (validation.status === 'MISMATCH_MORE' || validation.status === 'MISMATCH_LESS') {
+                            bottomSnippet = `
+                                <button type="button" class="btn btn-secondary btn-sm" onclick="syncQuestionScoreWithCustomPoints(${qIndex})" style="font-size: 0.72rem; padding: 2px 8px; flex-shrink: 0; color: #dc2626; font-weight: 600;">
+                                    <i class="ph ph-equals"></i> Total Poin Kunci: ${validation.totalPoints} (Samakan Skor Soal)
+                                </button>
+                            `;
+                        } else if (validation.status === 'OK' && validation.hasCustom) {
+                            bottomSnippet = `<span class="badge" style="background:#dcfce7; color:#15803d; font-size:0.72rem; padding: 3px 8px; flex-shrink: 0;"><i class="ph ph-check-circle"></i> Total Poin Kunci Pas (${validation.totalPoints})</span>`;
+                        }
+
                         optionsHtml += `
                             <div class="p-2 mt-2 flex items-center justify-between text-xs" style="background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: var(--radius-sm); color: #166534; flex-wrap: wrap; gap: 0.5rem;">
-                                <span><i class="ph ph-sliders"></i> <strong>Bobot Parsial Pilihan Ganda Kompleks:</strong> Anda dapat mengatur poin yang berbeda/tidak seimbang di tiap opsi jawaban (misal Opsi A = 2, Opsi C = 8). Kosongkan untuk bagi rata otomatis.</span>
-                                ${customSum > 0 ? `
-                                    <button type="button" class="btn btn-secondary btn-sm" onclick="syncQuestionScoreWithCustomPoints(${qIndex})" style="font-size: 0.72rem; padding: 2px 8px; flex-shrink: 0; color: #15803d; font-weight: 600;">
-                                        <i class="ph ph-equals"></i> Total Poin Kunci: ${customSum} (Samakan Skor Soal)
-                                    </button>
-                                ` : ''}
+                                <span><i class="ph ph-sliders"></i> <strong>Bobot Parsial Pilihan Ganda Kompleks:</strong> Anda dapat mengatur poin yang berbeda/tidak seimbang di tiap opsi jawaban. Kosongkan untuk bagi rata otomatis.</span>
+                                ${bottomSnippet}
                             </div>
                         `;
                     }
                 }
 
-                const totalCustomPoints = getQuestionCustomPointsTotal(q);
-                const qScoreNum = Number(q.score || 0);
-                const isScoreExceeded = (q.scoringMethod === 'PARTIAL' && totalCustomPoints > 0 && totalCustomPoints > qScoreNum);
+                let scoreLabelBadge = '';
+                let scoreInputStyle = '';
+                let scoreBadgeDisplay = 'none';
+                let scoreBadgeContent = '';
+
+                if (validation.status === 'INCOMPLETE') {
+                    scoreLabelBadge = `<span class="badge text-2xs" style="background:#fef3c7; color:#b45309; border:1px solid #fcd34d; padding:1px 5px;"><i class="ph ph-warning-circle"></i> Opsi Belum Lengkap</span>`;
+                    scoreInputStyle = 'border-color: #f59e0b; background-color: #fffbeb; color: #b45309; font-weight: bold;';
+                    scoreBadgeDisplay = 'inline-flex';
+                    scoreBadgeContent = `<i class="ph ph-warning-circle"></i> Opsi belum lengkap`;
+                } else if (validation.status === 'MISMATCH_LESS') {
+                    scoreLabelBadge = `<span class="badge text-2xs" style="background:#fee2e2; color:#b91c1c; border:1px solid #f87171; padding:1px 5px;"><i class="ph ph-warning"></i> Kurang ${Math.abs(validation.diff)}</span>`;
+                    scoreInputStyle = 'border-color: #ef4444; background-color: #fef2f2; color: #b91c1c; font-weight: bold;';
+                    scoreBadgeDisplay = 'inline-flex';
+                    scoreBadgeContent = `<i class="ph ph-warning-circle"></i> Kurang ${Math.abs(validation.diff)} poin (Opsi: ${validation.totalPoints})`;
+                } else if (validation.status === 'MISMATCH_MORE') {
+                    scoreLabelBadge = `<span class="badge text-2xs" style="background:#fee2e2; color:#b91c1c; border:1px solid #f87171; padding:1px 5px;"><i class="ph ph-warning"></i> Lebih ${validation.diff}</span>`;
+                    scoreInputStyle = 'border-color: #ef4444; background-color: #fef2f2; color: #b91c1c; font-weight: bold;';
+                    scoreBadgeDisplay = 'inline-flex';
+                    scoreBadgeContent = `<i class="ph ph-warning-circle"></i> Lebih ${validation.diff} poin (Opsi: ${validation.totalPoints})`;
+                } else if (validation.status === 'OK' && validation.hasCustom) {
+                    scoreLabelBadge = `<span class="badge text-2xs" style="background:#dcfce7; color:#15803d; border:1px solid #86efac; padding:1px 5px;"><i class="ph ph-check-circle"></i> Pas</span>`;
+                    scoreInputStyle = 'border-color: #10b981; background-color: #f0fdf4; color: #047857; font-weight: bold;';
+                    scoreBadgeDisplay = 'inline-flex';
+                    scoreBadgeContent = `<i class="ph ph-check-circle"></i> Pas (${validation.totalPoints} poin)`;
+                }
+
+                let warningBoxHtml = '';
+                if (validation.status === 'INCOMPLETE') {
+                    const missingText = validation.missingItems.map(m => `<strong>${m.label}</strong>`).join(', ');
+                    warningBoxHtml = `
+                        <div class="p-3 mb-3 flex items-center justify-between text-xs" style="background: #fffbeb; border: 1.5px solid #fcd34d; border-radius: var(--radius-sm); color: #92400e; gap: 0.75rem; flex-wrap: wrap; box-shadow: var(--shadow-sm);">
+                            <div class="flex items-center gap-2.5">
+                                <span style="background: #fef3c7; color: #d97706; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0;">
+                                    <i class="ph ph-warning-circle"></i>
+                                </span>
+                                <div>
+                                    <div class="font-bold" style="font-size: 0.82rem; color: #92400e;">
+                                        Ada opsi/pernyataan yang belum diberi skor!
+                                    </div>
+                                    <div class="mt-0.5" style="color: #b45309; font-size: 0.75rem;">
+                                        Karena salah satu opsi/pernyataan sudah diberi skor, maka ${missingText} juga <strong>wajib diisi skor</strong> agar totalnya dapat dihitung persis dengan Skor Soal.
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                } else if (validation.status === 'MISMATCH_MORE' || validation.status === 'MISMATCH_LESS') {
+                    const isMore = validation.status === 'MISMATCH_MORE';
+                    const labelTarget = q.type === 'TRUE_FALSE' ? 'Pernyataan' : 'Opsi Kunci';
+                    const diffText = isMore ? `Lebih <strong>${validation.diff} poin</strong>` : `Masih kurang <strong>${Math.abs(validation.diff)} poin</strong>`;
+                    warningBoxHtml = `
+                        <div class="p-3 mb-3 flex items-center justify-between text-xs" style="background: #fef2f2; border: 1.5px solid #f87171; border-radius: var(--radius-sm); color: #991b1b; gap: 0.75rem; flex-wrap: wrap; box-shadow: var(--shadow-sm);">
+                            <div class="flex items-center gap-2.5">
+                                <span style="background: #fee2e2; color: #dc2626; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0;">
+                                    <i class="ph ph-warning"></i>
+                                </span>
+                                <div>
+                                    <div class="font-bold" style="font-size: 0.82rem; color: #991b1b;">
+                                        Total Poin ${labelTarget} (${validation.totalPoints}) Tidak Sama dengan Skor Soal (${validation.qScore})!
+                                    </div>
+                                    <div class="mt-0.5" style="color: #b91c1c; font-size: 0.75rem;">
+                                        ${diffText}. Total poin pada opsi/pernyataan <strong>harus persis sama</strong> dengan Skor Soal agar penilaian parsial siswa valid.
+                                    </div>
+                                </div>
+                            </div>
+                            <button type="button" class="btn btn-sm flex items-center gap-1" onclick="syncQuestionScoreWithCustomPoints(${qIndex})" style="background: #dc2626; color: white; border: none; font-size: 0.75rem; padding: 0.35rem 0.75rem; font-weight: 600; flex-shrink: 0; border-radius: var(--radius-sm); cursor: pointer;">
+                                <i class="ph ph-arrow-up-right"></i> Samakan Skor Soal Jadi ${validation.totalPoints}
+                            </button>
+                        </div>
+                    `;
+                } else if (validation.status === 'OK' && validation.hasCustom) {
+                    warningBoxHtml = `
+                        <div class="p-2.5 mb-3 flex items-center justify-between text-xs" style="background: #f0fdf4; border: 1.5px solid #86efac; border-radius: var(--radius-sm); color: #166534; gap: 0.5rem; flex-wrap: wrap;">
+                            <div class="flex items-center gap-2">
+                                <i class="ph ph-check-circle" style="font-size: 1.25rem; color: #16a34a; flex-shrink: 0;"></i>
+                                <span><strong>Total Poin Opsi Pas:</strong> Total nilai opsi (${validation.totalPoints} poin) sudah <strong>persis sama</strong> dengan Skor Soal (${validation.qScore} poin).</span>
+                            </div>
+                        </div>
+                    `;
+                }
 
                 return `
                     <div class="card mb-4 question-card-item">
@@ -785,14 +1065,14 @@ Router.addRoute('/question-builder', async (params) => {
                             <div style="min-width: 140px;">
                                 <div class="flex items-center justify-between">
                                     <label class="input-label text-xs">Skor / Poin</label>
-                                    ${isScoreExceeded ? `<span class="badge text-2xs" style="background:#fee2e2; color:#b91c1c; border:1px solid #f87171; padding:1px 5px;"><i class="ph ph-warning"></i> Kurang</span>` : ''}
+                                    ${scoreLabelBadge}
                                 </div>
                                 <input type="number" id="q-score-input-${qIndex}" class="input-control mb-1" 
-                                       style="${isScoreExceeded ? 'border-color: #ef4444; background-color: #fef2f2; color: #b91c1c; font-weight: bold;' : ''}"
+                                       style="${scoreInputStyle}"
                                        value="${q.score}" 
                                        oninput="updateQuestionField(${qIndex}, 'score', Number(this.value || 0))">
-                                <div id="q-score-badge-${qIndex}" style="display: ${isScoreExceeded ? 'inline-flex' : 'none'}; color: #dc2626; font-size: 0.68rem; font-weight: 600; margin-bottom: 0.5rem;" class="items-center gap-1">
-                                    <i class="ph ph-warning-circle"></i> Opsi total: ${totalCustomPoints} poin
+                                <div id="q-score-badge-${qIndex}" style="display: ${scoreBadgeDisplay}; color: ${validation.status === 'INCOMPLETE' ? '#b45309' : (validation.status === 'OK' ? '#15803d' : '#dc2626')}; font-size: 0.68rem; font-weight: 600; margin-bottom: 0.5rem;" class="items-center gap-1">
+                                    ${scoreBadgeContent}
                                 </div>
                                 
                                 <label class="input-label text-xs mt-1 flex items-center justify-between" style="gap: 4px;">
@@ -800,10 +1080,10 @@ Router.addRoute('/question-builder', async (params) => {
                                     ${exam && exam.enableQuestionTimer ? '<span class="badge badge-timer-warning" style="font-size:0.65rem; padding: 1px 5px; line-height: 1.2;">Per Soal</span>' : '<span class="text-2xs text-muted" style="font-size:0.68rem;">Detik</span>'}
                                 </label>
                                 <input type="number" class="input-control mb-2" min="1" 
-                                       placeholder="${exam && exam.enableQuestionTimer ? `Default (${exam.defaultQuestionDuration || 60}s)` : 'Ikut Ujian'}" 
-                                       value="${(q.durationSeconds !== undefined && q.durationSeconds !== null && q.durationSeconds !== '') ? q.durationSeconds : ''}" 
-                                       oninput="updateQuestionField(${qIndex}, 'durationSeconds', this.value ? Number(this.value) : null)"
-                                       title="Durasi pengerjaan spesifik soal ini dalam detik. Kosongkan untuk menggunakan durasi default ujian.">
+                                        placeholder="${exam && exam.enableQuestionTimer ? `Default (${exam.defaultQuestionDuration || 60}s)` : 'Ikut Ujian'}" 
+                                        value="${(q.durationSeconds !== undefined && q.durationSeconds !== null && q.durationSeconds !== '') ? q.durationSeconds : ''}" 
+                                        oninput="updateQuestionField(${qIndex}, 'durationSeconds', this.value ? Number(this.value) : null)"
+                                        title="Durasi pengerjaan spesifik soal ini dalam detik. Kosongkan untuk menggunakan durasi default ujian.">
 
                                 ${(q.type === 'MCQ_COMPLEX' || q.type === 'TRUE_FALSE') ? `
                                     <label class="input-label text-xs mt-2">Metode Penilaian</label>
@@ -816,26 +1096,7 @@ Router.addRoute('/question-builder', async (params) => {
                         </div>
 
                         <div id="q-score-warning-${qIndex}">
-                            ${isScoreExceeded ? `
-                                <div class="p-3 mb-3 flex items-center justify-between text-xs" style="background: #fef2f2; border: 1.5px solid #f87171; border-radius: var(--radius-sm); color: #991b1b; gap: 0.75rem; flex-wrap: wrap; box-shadow: var(--shadow-sm);">
-                                    <div class="flex items-center gap-2.5">
-                                        <span style="background: #fee2e2; color: #dc2626; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0;">
-                                            <i class="ph ph-warning"></i>
-                                        </span>
-                                        <div>
-                                            <div class="font-bold" style="font-size: 0.82rem; color: #991b1b;">
-                                                Peringatan: Total Poin ${q.type === 'TRUE_FALSE' ? 'Pernyataan' : 'Opsi Kunci'} (${totalCustomPoints}) Melebihi Skor Soal (${qScoreNum})!
-                                            </div>
-                                            <div class="mt-0.5" style="color: #b91c1c; font-size: 0.75rem;">
-                                                Harap ubah <strong>Skor / Poin Soal</strong> minimal menjadi <strong>${totalCustomPoints}</strong> agar penilaian parsial siswa akurat dan tidak terpotong.
-                                            </div>
-                                        </div>
-                                    </div>
-                                    <button type="button" class="btn btn-sm flex items-center gap-1" onclick="syncQuestionScoreWithCustomPoints(${qIndex})" style="background: #dc2626; color: white; border: none; font-size: 0.75rem; padding: 0.35rem 0.75rem; font-weight: 600; flex-shrink: 0; border-radius: var(--radius-sm); cursor: pointer;">
-                                        <i class="ph ph-arrow-up-right"></i> Ubah Skor Soal Jadi ${totalCustomPoints}
-                                    </button>
-                                </div>
-                            ` : ''}
+                            ${warningBoxHtml}
                         </div>
 
                         <div class="mb-2">
@@ -1280,7 +1541,7 @@ Router.addRoute('/question-builder', async (params) => {
                             const cArr = Array.isArray(correctAnswer) ? correctAnswer : [];
                             options.forEach(o => { if (cArr.includes(o.id) && o.score) sumWeights += Number(o.score); });
                         }
-                        if (sumWeights > finalScore) {
+                        if (sumWeights > 0) {
                             finalScore = Math.round(sumWeights * 100) / 100;
                         }
                     }
@@ -1367,15 +1628,37 @@ Router.addRoute('/question-builder', async (params) => {
     };
 
     window.saveAllQuestions = async function() {
-        // Validation: Check if any question with partial scoring has option points > question score
+        // Validation: Check partial option scoring for all questions
         for (let i = 0; i < questions.length; i++) {
             const q = questions[i];
             if (q.scoringMethod === 'PARTIAL') {
-                const totalPoints = getQuestionCustomPointsTotal(q);
-                const qScore = Number(q.score || 0);
-                if (totalPoints > 0 && totalPoints > qScore) {
-                    UI.showToast(`Peringatan: Pada Soal #${i + 1}, total poin opsi/pernyataan (${totalPoints}) melebihi Skor Soal (${qScore}). Harap ubah Skor Soal terlebih dahulu!`, 'warning');
-                    
+                const validation = validatePartialOptionScoring(q);
+                if (validation.status === 'INCOMPLETE') {
+                    UI.showToast(`Peringatan: Pada Soal #${i + 1}, ${validation.message} Semua opsi/pernyataan kunci wajib diisi skor agar totalnya persis sama dengan Skor Soal.`, 'warning');
+
+                    const cardList = document.querySelectorAll('#questionsListContainer .question-card-item');
+                    if (cardList && cardList[i]) {
+                        cardList[i].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                    if (validation.missingItems && validation.missingItems.length > 0) {
+                        const firstMissing = validation.missingItems[0];
+                        const inputId = q.type === 'TRUE_FALSE' 
+                            ? `stmt-score-input-${i}-${firstMissing.index}` 
+                            : `opt-score-input-${i}-${firstMissing.index}`;
+                        const missingInput = document.getElementById(inputId);
+                        if (missingInput) {
+                            missingInput.focus();
+                        }
+                    }
+                    checkQuestionScoreWarning(i);
+                    return;
+                }
+
+                if (validation.status === 'MISMATCH_MORE' || validation.status === 'MISMATCH_LESS') {
+                    const isMore = validation.status === 'MISMATCH_MORE';
+                    const diffText = isMore ? `melebihi Skor Soal (${validation.qScore}) sebanyak ${validation.diff} poin` : `kurang dari Skor Soal (${validation.qScore}) sebanyak ${Math.abs(validation.diff)} poin`;
+                    UI.showToast(`Peringatan: Pada Soal #${i + 1}, total poin opsi (${validation.totalPoints}) ${diffText}. Total poin wajib persis sama dengan Skor Soal!`, 'warning');
+
                     const cardList = document.querySelectorAll('#questionsListContainer .question-card-item');
                     if (cardList && cardList[i]) {
                         cardList[i].scrollIntoView({ behavior: 'smooth', block: 'center' });
