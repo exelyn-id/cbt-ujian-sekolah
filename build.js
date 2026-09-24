@@ -82,6 +82,16 @@ ${combinedJs}
 </html>
 `;
 
+// Write to root index.html
 const outputRoot = path.join(BASE_DIR, 'index.html');
 fs.writeFileSync(outputRoot, singleHtmlTemplate, 'utf-8');
-console.log(`Successfully generated single-file index.html at ${outputRoot} (${singleHtmlTemplate.length} bytes)`);
+
+// Write to public/ directory for Vercel Output Directory
+const publicDir = path.join(BASE_DIR, 'public');
+if (!fs.existsSync(publicDir)) {
+    fs.mkdirSync(publicDir, { recursive: true });
+}
+const outputPublic = path.join(publicDir, 'index.html');
+fs.writeFileSync(outputPublic, singleHtmlTemplate, 'utf-8');
+
+console.log(`Successfully generated single-file index.html at root and ${outputPublic} (${singleHtmlTemplate.length} bytes)`);
