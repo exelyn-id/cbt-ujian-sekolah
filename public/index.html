@@ -3802,9 +3802,109 @@ Router.addRoute('/question-builder', async (params) => {
         renderQuestionsList();
     };
 
+    function getQuestionCustomPointsTotal(q) {
+        if (!q || !Array.isArray(q.options) || q.scoringMethod !== 'PARTIAL') return 0;
+        let sum = 0;
+        let hasCustom = false;
+        if (q.type === 'TRUE_FALSE') {
+            q.options.forEach(o => {
+                if (o.score !== undefined && o.score !== null && o.score !== '' && Number(o.score) > 0) {
+                    sum += Number(o.score);
+                    hasCustom = true;
+                }
+            });
+        } else if (q.type === 'MCQ_COMPLEX') {
+            const answerArr = Array.isArray(q.correctAnswer) ? q.correctAnswer : [];
+            q.options.forEach(o => {
+                if (answerArr.includes(o.id) && o.score !== undefined && o.score !== null && o.score !== '' && Number(o.score) > 0) {
+                    sum += Number(o.score);
+                    hasCustom = true;
+                }
+            });
+            if (!hasCustom) {
+                q.options.forEach(o => {
+                    if (o.score !== undefined && o.score !== null && o.score !== '' && Number(o.score) > 0) {
+                        sum += Number(o.score);
+                        hasCustom = true;
+                    }
+                });
+            }
+        }
+        return hasCustom ? Math.round(sum * 100) / 100 : 0;
+    }
+
+    window.checkQuestionScoreWarning = function(qIndex) {
+        const q = questions[qIndex];
+        if (!q) return;
+        const warningEl = document.getElementById(`q-score-warning-${qIndex}`);
+        const scoreInput = document.getElementById(`q-score-input-${qIndex}`);
+        const scoreBadge = document.getElementById(`q-score-badge-${qIndex}`);
+        const totalPoints = getQuestionCustomPointsTotal(q);
+        const qScore = Number(q.score || 0);
+
+        const isExceeded = (q.scoringMethod === 'PARTIAL' && totalPoints > 0 && totalPoints > qScore);
+
+        if (scoreInput) {
+            if (isExceeded) {
+                scoreInput.style.borderColor = '#ef4444';
+                scoreInput.style.backgroundColor = '#fef2f2';
+                scoreInput.style.color = '#b91c1c';
+                scoreInput.style.fontWeight = 'bold';
+            } else {
+                scoreInput.style.borderColor = '';
+                scoreInput.style.backgroundColor = '';
+                scoreInput.style.color = '';
+                scoreInput.style.fontWeight = '';
+            }
+        }
+
+        if (scoreBadge) {
+            if (isExceeded) {
+                scoreBadge.style.display = 'inline-flex';
+                scoreBadge.innerHTML = `<i class="ph ph-warning-circle"></i> Opsi total: ${totalPoints} poin`;
+            } else {
+                scoreBadge.style.display = 'none';
+                scoreBadge.innerHTML = '';
+            }
+        }
+
+        if (warningEl) {
+            if (isExceeded) {
+                warningEl.style.display = 'block';
+                const labelTarget = q.type === 'TRUE_FALSE' ? 'Pernyataan' : 'Opsi Kunci';
+                warningEl.innerHTML = `
+                    <div class="p-3 mb-3 flex items-center justify-between text-xs" style="background: #fef2f2; border: 1.5px solid #f87171; border-radius: var(--radius-sm); color: #991b1b; gap: 0.75rem; flex-wrap: wrap; box-shadow: var(--shadow-sm);">
+                        <div class="flex items-center gap-2.5">
+                            <span style="background: #fee2e2; color: #dc2626; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0;">
+                                <i class="ph ph-warning"></i>
+                            </span>
+                            <div>
+                                <div class="font-bold" style="font-size: 0.82rem; color: #991b1b;">
+                                    Peringatan: Total Poin ${labelTarget} (${totalPoints}) Melebihi Skor Soal (${qScore})!
+                                </div>
+                                <div class="mt-0.5" style="color: #b91c1c; font-size: 0.75rem;">
+                                    Harap ubah <strong>Skor / Poin Soal</strong> minimal menjadi <strong>${totalPoints}</strong> agar penilaian parsial siswa akurat dan tidak terpotong.
+                                </div>
+                            </div>
+                        </div>
+                        <button type="button" class="btn btn-sm flex items-center gap-1" onclick="syncQuestionScoreWithCustomPoints(${qIndex})" style="background: #dc2626; color: white; border: none; font-size: 0.75rem; padding: 0.35rem 0.75rem; font-weight: 600; flex-shrink: 0; border-radius: var(--radius-sm); cursor: pointer;">
+                            <i class="ph ph-arrow-up-right"></i> Ubah Skor Soal Jadi ${totalPoints}
+                        </button>
+                    </div>
+                `;
+            } else {
+                warningEl.style.display = 'none';
+                warningEl.innerHTML = '';
+            }
+        }
+    };
+
     window.updateQuestionField = function(index, field, value) {
         if (questions[index]) {
             questions[index][field] = value;
+            if (field === 'score' || field === 'scoringMethod') {
+                checkQuestionScoreWarning(index);
+            }
         }
     };
 
@@ -3812,6 +3912,7 @@ Router.addRoute('/question-builder', async (params) => {
         if (questions[qIndex] && questions[qIndex].options && questions[qIndex].options[optIndex]) {
             const v = String(value).trim();
             questions[qIndex].options[optIndex].score = v === '' ? null : Number(v);
+            checkQuestionScoreWarning(qIndex);
         }
     };
 
@@ -3819,6 +3920,7 @@ Router.addRoute('/question-builder', async (params) => {
         if (questions[qIndex] && questions[qIndex].options && questions[qIndex].options[sIndex]) {
             const v = String(value).trim();
             questions[qIndex].options[sIndex].score = v === '' ? null : Number(v);
+            checkQuestionScoreWarning(qIndex);
         }
     };
 
@@ -3839,9 +3941,19 @@ Router.addRoute('/question-builder', async (params) => {
                     sum += Number(o.score);
                 }
             });
+            if (sum === 0) {
+                q.options.forEach(o => {
+                    if (o.score !== undefined && o.score !== null && o.score !== '') {
+                        sum += Number(o.score);
+                    }
+                });
+            }
         }
         if (sum > 0) {
             q.score = Math.round(sum * 100) / 100;
+            const scoreInput = document.getElementById(`q-score-input-${qIndex}`);
+            if (scoreInput) scoreInput.value = q.score;
+            checkQuestionScoreWarning(qIndex);
             renderQuestionsList();
             UI.showToast(`Skor total soal disesuaikan menjadi ${q.score} poin.`, 'success');
         }
@@ -4228,6 +4340,10 @@ Router.addRoute('/question-builder', async (params) => {
                     }
                 }
 
+                const totalCustomPoints = getQuestionCustomPointsTotal(q);
+                const qScoreNum = Number(q.score || 0);
+                const isScoreExceeded = (q.scoringMethod === 'PARTIAL' && totalCustomPoints > 0 && totalCustomPoints > qScoreNum);
+
                 return `
                     <div class="card mb-4 question-card-item">
                         <div class="flex justify-between items-start mb-4">
@@ -4276,7 +4392,7 @@ Router.addRoute('/question-builder', async (params) => {
                                                  referrerpolicy="no-referrer"
                                                  onerror="handleImgError(this)" 
                                                  style="max-height: 85px; max-width: 140px; object-fit: contain; border-radius: 4px; background: #fafafa; border: 1px solid var(--border-color);">
-                                            <div class="flex-1" style="min-width: 0;">
+                                             <div class="flex-1" style="min-width: 0;">
                                                 <div class="text-xs font-bold text-primary flex items-center gap-1">
                                                     <i class="ph ph-image"></i> Gambar Terpasang
                                                 </div>
@@ -4302,8 +4418,17 @@ Router.addRoute('/question-builder', async (params) => {
                                 </div>
                             </div>
                             <div style="min-width: 140px;">
-                                <label class="input-label text-xs">Skor / Poin</label>
-                                <input type="number" class="input-control mb-2" value="${q.score}" oninput="updateQuestionField(${qIndex}, 'score', Number(this.value || 10))">
+                                <div class="flex items-center justify-between">
+                                    <label class="input-label text-xs">Skor / Poin</label>
+                                    ${isScoreExceeded ? `<span class="badge text-2xs" style="background:#fee2e2; color:#b91c1c; border:1px solid #f87171; padding:1px 5px;"><i class="ph ph-warning"></i> Kurang</span>` : ''}
+                                </div>
+                                <input type="number" id="q-score-input-${qIndex}" class="input-control mb-1" 
+                                       style="${isScoreExceeded ? 'border-color: #ef4444; background-color: #fef2f2; color: #b91c1c; font-weight: bold;' : ''}"
+                                       value="${q.score}" 
+                                       oninput="updateQuestionField(${qIndex}, 'score', Number(this.value || 0))">
+                                <div id="q-score-badge-${qIndex}" style="display: ${isScoreExceeded ? 'inline-flex' : 'none'}; color: #dc2626; font-size: 0.68rem; font-weight: 600; margin-bottom: 0.5rem;" class="items-center gap-1">
+                                    <i class="ph ph-warning-circle"></i> Opsi total: ${totalCustomPoints} poin
+                                </div>
                                 
                                 <label class="input-label text-xs mt-1 flex items-center justify-between" style="gap: 4px;">
                                     <span><i class="ph ph-timer"></i> Waktu (Detik)</span>
@@ -4323,6 +4448,29 @@ Router.addRoute('/question-builder', async (params) => {
                                     </select>
                                 ` : ''}
                             </div>
+                        </div>
+
+                        <div id="q-score-warning-${qIndex}">
+                            ${isScoreExceeded ? `
+                                <div class="p-3 mb-3 flex items-center justify-between text-xs" style="background: #fef2f2; border: 1.5px solid #f87171; border-radius: var(--radius-sm); color: #991b1b; gap: 0.75rem; flex-wrap: wrap; box-shadow: var(--shadow-sm);">
+                                    <div class="flex items-center gap-2.5">
+                                        <span style="background: #fee2e2; color: #dc2626; width: 32px; height: 32px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0;">
+                                            <i class="ph ph-warning"></i>
+                                        </span>
+                                        <div>
+                                            <div class="font-bold" style="font-size: 0.82rem; color: #991b1b;">
+                                                Peringatan: Total Poin ${q.type === 'TRUE_FALSE' ? 'Pernyataan' : 'Opsi Kunci'} (${totalCustomPoints}) Melebihi Skor Soal (${qScoreNum})!
+                                            </div>
+                                            <div class="mt-0.5" style="color: #b91c1c; font-size: 0.75rem;">
+                                                Harap ubah <strong>Skor / Poin Soal</strong> minimal menjadi <strong>${totalCustomPoints}</strong> agar penilaian parsial siswa akurat dan tidak terpotong.
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <button type="button" class="btn btn-sm flex items-center gap-1" onclick="syncQuestionScoreWithCustomPoints(${qIndex})" style="background: #dc2626; color: white; border: none; font-size: 0.75rem; padding: 0.35rem 0.75rem; font-weight: 600; flex-shrink: 0; border-radius: var(--radius-sm); cursor: pointer;">
+                                        <i class="ph ph-arrow-up-right"></i> Ubah Skor Soal Jadi ${totalCustomPoints}
+                                    </button>
+                                </div>
+                            ` : ''}
                         </div>
 
                         <div class="mb-2">
@@ -4758,6 +4906,20 @@ Router.addRoute('/question-builder', async (params) => {
                         ? (isPartialMethod || parsedScoresArr.length > 0 ? 'PARTIAL' : 'EXACT')
                         : 'EXACT';
 
+                    let finalScore = score;
+                    if (finalScoringMethod === 'PARTIAL') {
+                        let sumWeights = 0;
+                        if (type === 'TRUE_FALSE') {
+                            options.forEach(o => { if (o.score) sumWeights += Number(o.score); });
+                        } else if (type === 'MCQ_COMPLEX') {
+                            const cArr = Array.isArray(correctAnswer) ? correctAnswer : [];
+                            options.forEach(o => { if (cArr.includes(o.id) && o.score) sumWeights += Number(o.score); });
+                        }
+                        if (sumWeights > finalScore) {
+                            finalScore = Math.round(sumWeights * 100) / 100;
+                        }
+                    }
+
                     parsed.push({
                         id: 'Q_' + Math.floor(Math.random() * 90000 + 10000),
                         type: type,
@@ -4765,7 +4927,7 @@ Router.addRoute('/question-builder', async (params) => {
                         text: questionText,
                         bottomText: bottomText,
                         imageUrl: formatDirectImageUrl(rawImg),
-                        score: score,
+                        score: finalScore,
                         durationSeconds: durationSeconds,
                         options: options,
                         correctAnswer: correctAnswer,
@@ -4840,6 +5002,29 @@ Router.addRoute('/question-builder', async (params) => {
     };
 
     window.saveAllQuestions = async function() {
+        // Validation: Check if any question with partial scoring has option points > question score
+        for (let i = 0; i < questions.length; i++) {
+            const q = questions[i];
+            if (q.scoringMethod === 'PARTIAL') {
+                const totalPoints = getQuestionCustomPointsTotal(q);
+                const qScore = Number(q.score || 0);
+                if (totalPoints > 0 && totalPoints > qScore) {
+                    UI.showToast(`Peringatan: Pada Soal #${i + 1}, total poin opsi/pernyataan (${totalPoints}) melebihi Skor Soal (${qScore}). Harap ubah Skor Soal terlebih dahulu!`, 'warning');
+                    
+                    const cardList = document.querySelectorAll('#questionsListContainer .question-card-item');
+                    if (cardList && cardList[i]) {
+                        cardList[i].scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    }
+                    const scoreInput = document.getElementById(`q-score-input-${i}`);
+                    if (scoreInput) {
+                        scoreInput.focus();
+                    }
+                    checkQuestionScoreWarning(i);
+                    return;
+                }
+            }
+        }
+
         const btn = document.getElementById('saveQuestionsBtn');
         const mBtn = document.getElementById('mSaveQuestionsBtn');
         if (btn) {
