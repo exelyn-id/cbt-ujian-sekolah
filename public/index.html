@@ -1435,7 +1435,7 @@ async function downloadExamResultsExcel(examId, examTitle, triggerBtnId) {
             [],
             [
                 "No", "NIS", "Nama Peserta", "Kelas", "Percobaan", "Status",
-                "Nilai Akhir", "KKM", "Hasil KKM", "Jml Benar", "Jml Salah",
+                "Nilai Akhir", "KKM", "Hasil KKM", "Jml Benar", "Jml Salah", "Keluar Tab / App",
                 "Waktu Mulai", "Waktu Selesai", "Durasi Pengerjaan"
             ]
         ];
@@ -1464,6 +1464,7 @@ async function downloadExamResultsExcel(examId, examTitle, triggerBtnId) {
                 att.passStatus || '-',
                 att.totalCorrect !== undefined ? att.totalCorrect : '-',
                 att.totalWrong !== undefined ? att.totalWrong : '-',
+                `${att.tabSwitchCount || 0}x`,
                 att.startedAt ? new Date(att.startedAt).toLocaleString('id-ID') : '-',
                 att.submittedAt ? new Date(att.submittedAt).toLocaleString('id-ID') : '-',
                 durationStr
@@ -1473,7 +1474,7 @@ async function downloadExamResultsExcel(examId, examTitle, triggerBtnId) {
         const wsRekap = XLSX.utils.aoa_to_sheet(rekapRows);
         wsRekap['!cols'] = [
             { wch: 6 }, { wch: 14 }, { wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 18 },
-            { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 10 },
+            { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 16 },
             { wch: 20 }, { wch: 20 }, { wch: 16 }
         ];
         XLSX.utils.book_append_sheet(wb, wsRekap, "Rekap_Nilai");
@@ -2217,14 +2218,15 @@ const api = {
         };
     },
 
-    async saveAttemptAnswers(attemptId, answersMap) {
+    async saveAttemptAnswers(attemptId, answersMap, tabSwitchCount = 0) {
         if (isGAS) return _callGAS('saveAttemptAnswers', attemptId, answersMap);
         if (isVercel) {
             const examId = (AppState.currentExam && AppState.currentExam.examId) || '';
             const vRes = await _callVercel('/api/autosave', 'POST', {
                 attemptId: attemptId,
                 examId: examId,
-                answersMap: answersMap
+                answersMap: answersMap,
+                tabSwitchCount: tabSwitchCount
             });
             if (vRes) return vRes;
         }
@@ -2233,15 +2235,16 @@ const api = {
         return { success: true, savedAt: Date.now() };
     },
 
-    async submitExamAttempt(attemptId, finalAnswersMap) {
-        if (isGAS) return _callGAS('submitExamAttempt', attemptId, finalAnswersMap);
+    async submitExamAttempt(attemptId, finalAnswersMap, tabSwitchCount = 0) {
+        if (isGAS) return _callGAS('submitExamAttempt', attemptId, finalAnswersMap, tabSwitchCount);
         if (isVercel) {
             const examId = (AppState.currentExam && AppState.currentExam.examId) || '';
             const vRes = await _callVercel('/api/submit', 'POST', {
                 attemptId: attemptId,
                 examId: examId,
                 participant: AppState.attempt,
-                answers: finalAnswersMap
+                answers: finalAnswersMap,
+                tabSwitchCount: tabSwitchCount
             });
             if (vRes) return vRes;
         }
@@ -2532,6 +2535,12 @@ const Router = {
         const app = document.getElementById('app');
         if (!app) return;
         
+        // Clean up exam proctor listeners if navigating away from exam
+        if (typeof window._cleanupExamProctor === 'function') {
+            try { window._cleanupExamProctor(); } catch (e) {}
+            window._cleanupExamProctor = null;
+        }
+
         if (this.routes[path]) {
             this.currentRoute = path;
             // Clear current view
@@ -4780,6 +4789,7 @@ const renderTeacherResults = async (params) => {
                                 <th class="py-3 px-4 text-sm font-semibold text-secondary">Kelas</th>
                                 <th class="py-3 px-4 text-sm font-semibold text-secondary text-center">Percobaan</th>
                                 <th class="py-3 px-4 text-sm font-semibold text-secondary">Status</th>
+                                <th class="py-3 px-4 text-sm font-semibold text-secondary text-center">Integritas</th>
                                 <th class="py-3 px-4 text-sm font-semibold text-secondary">Nilai Akhir</th>
                                 <th class="py-3 px-4 text-sm font-semibold text-secondary">Hasil KKM</th>
                                 <th class="py-3 px-4 text-sm font-semibold text-secondary">Waktu Selesai</th>
@@ -4789,7 +4799,7 @@ const renderTeacherResults = async (params) => {
                         <tbody>
                             ${results.length === 0 ? `
                                 <tr>
-                                    <td colspan="9" class="text-center py-8 text-muted">Belum ada data peserta yang mengikuti ujian ini.</td>
+                                    <td colspan="10" class="text-center py-8 text-muted">Belum ada data peserta yang mengikuti ujian ini.</td>
                                 </tr>
                             ` : results.map(r => `
                                 <tr style="border-bottom: 1px solid var(--border-color);">
@@ -4801,6 +4811,17 @@ const renderTeacherResults = async (params) => {
                                         <span class="badge ${r.status === 'SUBMITTED' ? 'badge-active' : 'badge-draft'}">
                                             ${r.status === 'SUBMITTED' ? 'Selesai' : 'Mengerjakan'}
                                         </span>
+                                    </td>
+                                    <td class="py-3 px-4 text-center">
+                                        ${r.tabSwitchCount > 0 ? `
+                                            <span class="badge" style="background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; white-space: nowrap; font-size: 0.78rem;" title="Terdeteksi ${r.tabSwitchCount}x berpindah tab/aplikasi">
+                                                <i class="ph ph-warning"></i> ${r.tabSwitchCount}x Keluar
+                                            </span>
+                                        ` : `
+                                            <span class="badge" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; white-space: nowrap; font-size: 0.78rem;" title="Tertib (Tidak terdeteksi keluar tab)">
+                                                <i class="ph ph-shield-check"></i> Tertib (0x)
+                                            </span>
+                                        `}
                                     </td>
                                     <td class="py-3 px-4 font-bold ${r.score !== null ? (r.score >= (r.kkm || 75) ? 'text-success' : 'text-error') : ''}">
                                         ${r.score !== null ? r.score : '-'}
@@ -4837,7 +4858,18 @@ const renderTeacherResults = async (params) => {
                             <div class="flex justify-between items-start mb-2">
                                 <div>
                                     <div class="font-bold text-base text-primary">${r.name}</div>
-                                    <div class="text-xs text-muted mt-1">NIS: <strong>${r.nis}</strong> • Kelas: <strong>${r.className}</strong></div>
+                                    <div class="text-xs text-muted mt-1 flex items-center gap-1.5 flex-wrap">
+                                        <span>NIS: <strong>${r.nis}</strong> • Kelas: <strong>${r.className}</strong></span>
+                                        ${r.tabSwitchCount > 0 ? `
+                                            <span class="badge" style="background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; font-size: 0.72rem; padding: 1px 6px;">
+                                                <i class="ph ph-warning"></i> ${r.tabSwitchCount}x Keluar
+                                            </span>
+                                        ` : `
+                                            <span class="badge" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-size: 0.72rem; padding: 1px 6px;">
+                                                <i class="ph ph-shield-check"></i> Tertib (0x)
+                                            </span>
+                                        `}
+                                    </div>
                                 </div>
                                 <div>
                                     <span class="badge ${r.passStatus === 'LULUS' ? 'badge-active' : 'badge-archived'}">
@@ -5103,8 +5135,17 @@ window.showStudentDetail = async function(attemptId) {
                             <div class="text-xs text-muted mt-0.5">
                                 NIS: <strong>${att.nis}</strong> • Kelas: <strong>${att.className}</strong>
                             </div>
-                            <div class="text-xs text-muted mt-0.5">
-                                Percobaan: <strong>Ke-${att.attemptNumber || 1}</strong> • ${att.endAt ? new Date(att.endAt).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}) : '-'}
+                            <div class="text-xs text-muted mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                <span>Percobaan: <strong>Ke-${att.attemptNumber || 1}</strong> • ${att.endAt ? new Date(att.endAt).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}) : '-'}</span>
+                                ${att.tabSwitchCount > 0 ? `
+                                    <span class="badge" style="background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; font-size: 0.72rem; padding: 2px 6px;">
+                                        <i class="ph ph-warning"></i> Terdeteksi ${att.tabSwitchCount}x Keluar Tab/App
+                                    </span>
+                                ` : `
+                                    <span class="badge" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-size: 0.72rem; padding: 2px 6px;">
+                                        <i class="ph ph-shield-check"></i> Integritas Tertib (0x Keluar Tab)
+                                    </span>
+                                `}
                             </div>
                         </div>
                         <div class="text-right">
@@ -5687,6 +5728,131 @@ Router.addRoute('/student/exam', async () => {
         }
     }
 
+    // --- ANTI-CHEAT & PROCTORING ENGINE (Tab & App Switch Detection) ---
+    let tabSwitchCount = 0;
+    if (attemptId) {
+        try {
+            const cachedSwitch = localStorage.getItem('cbt_switch_' + attemptId);
+            if (cachedSwitch !== null) {
+                tabSwitchCount = parseInt(cachedSwitch, 10) || 0;
+            }
+        } catch (e) {}
+    }
+
+    let isAway = false;
+    let awayStartTime = 0;
+    let isWarningModalOpen = false;
+
+    window.dismissTabWarning = function() {
+        isWarningModalOpen = false;
+        const modal = document.getElementById('proctorWarningModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    };
+
+    function showTabWarningModal(count) {
+        if (isWarningModalOpen) return;
+        isWarningModalOpen = true;
+
+        let modalEl = document.getElementById('proctorWarningModal');
+        if (!modalEl) {
+            modalEl = document.createElement('div');
+            modalEl.id = 'proctorWarningModal';
+            modalEl.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 1.25rem;';
+            document.body.appendChild(modalEl);
+        }
+
+        modalEl.innerHTML = `
+            <div style="background: #ffffff; border-radius: var(--radius-lg, 16px); max-width: 450px; width: 100%; padding: 2rem; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.3); border: 2px solid #fecaca; text-align: center; position: relative;">
+                <div style="width: 64px; height: 64px; border-radius: 50%; background: #fef2f2; color: #dc2626; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem; font-size: 2.25rem; border: 2px solid #fecaca; box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.12);">
+                    <i class="ph ph-warning-octagon"></i>
+                </div>
+                
+                <h3 style="margin: 0 0 0.5rem; color: #991b1b; font-size: 1.3rem; font-weight: 800;">
+                    Peringatan Integritas Ujian!
+                </h3>
+                
+                <p style="color: var(--text-secondary, #475569); font-size: 0.925rem; line-height: 1.5; margin: 0 0 1.25rem;">
+                    Anda terdeteksi meninggalkan halaman ujian (berpindah tab browser atau membuka aplikasi lain).
+                </p>
+
+                <div style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: var(--radius-md, 8px); padding: 0.85rem 1rem; margin-bottom: 1.25rem; text-align: left;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35rem;">
+                        <span style="font-size: 0.85rem; color: #9f1239; font-weight: 600;">Status Pelanggaran:</span>
+                        <span class="badge" style="background: #e11d48; color: #ffffff; font-weight: 700; font-size: 0.78rem; padding: 2px 10px; border-radius: 9999px;">
+                            Peringatan ke-${count}
+                        </span>
+                    </div>
+                    <div style="font-size: 0.8rem; color: #be123c; line-height: 1.4;">
+                        <i class="ph ph-info"></i> Aktivitas ini dicatat otomatis oleh sistem pengawas dan dilaporkan ke Guru.
+                    </div>
+                </div>
+
+                <p style="color: var(--text-muted, #64748b); font-size: 0.825rem; margin: 0 0 1.5rem; line-height: 1.45;">
+                    Harap tetap fokus pada halaman ujian hingga seluruh soal selesai dikerjakan. Jawaban Anda tetap aman tersimpan.
+                </p>
+
+                <button class="btn btn-primary w-full" onclick="dismissTabWarning()" style="padding: 0.85rem 1.25rem; font-size: 0.95rem; font-weight: 600; border-radius: var(--radius-md, 8px); display: flex; align-items: center; justify-content: center; gap: 0.5rem; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.25); cursor: pointer;">
+                    <i class="ph ph-check-circle"></i> Saya Mengerti & Lanjutkan Ujian
+                </button>
+            </div>
+        `;
+        modalEl.style.display = 'flex';
+    }
+
+    function onUserLeft() {
+        if (isAway) return;
+        isAway = true;
+        awayStartTime = Date.now();
+    }
+
+    function onUserReturned() {
+        if (!isAway) return;
+        isAway = false;
+        const duration = Date.now() - awayStartTime;
+        // Debounce: must be away for at least 800ms
+        if (duration >= 800) {
+            tabSwitchCount++;
+            try {
+                if (attemptId) localStorage.setItem('cbt_switch_' + attemptId, String(tabSwitchCount));
+            } catch (e) {}
+            hasPendingCloudSync = true;
+            triggerCloudSync();
+            showTabWarningModal(tabSwitchCount);
+        }
+    }
+
+    function handleVisibility() {
+        if (document.hidden) {
+            onUserLeft();
+        } else {
+            onUserReturned();
+        }
+    }
+
+    function handleBlur() {
+        onUserLeft();
+    }
+
+    function handleFocus() {
+        onUserReturned();
+    }
+
+    // Attach proctor listeners
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('focus', handleFocus);
+
+    // Register cleanup function
+    window._cleanupExamProctor = function() {
+        document.removeEventListener('visibilitychange', handleVisibility);
+        window.removeEventListener('blur', handleBlur);
+        window.removeEventListener('focus', handleFocus);
+        const modal = document.getElementById('proctorWarningModal');
+        if (modal) modal.remove();
+    };
+
     // Helper to render question
     window.renderQuestion = function(index) {
         currentIndex = index;
@@ -5852,7 +6018,7 @@ Router.addRoute('/student/exam', async () => {
         }
 
         try {
-            const res = await api.saveAttemptAnswers(attemptId, AppState.answers);
+            const res = await api.saveAttemptAnswers(attemptId, AppState.answers, tabSwitchCount);
             if (res && res.success) {
                 hasPendingCloudSync = false;
                 if (indicator) {
@@ -5955,6 +6121,10 @@ Router.addRoute('/student/exam', async () => {
 
     window.executeSubmit = async function() {
         closeModal();
+        if (typeof window._cleanupExamProctor === 'function') {
+            window._cleanupExamProctor();
+            window._cleanupExamProctor = null;
+        }
         if (AppState.timer) clearInterval(AppState.timer);
         if (window._cbtCloudSyncInterval) {
             clearInterval(window._cbtCloudSyncInterval);
@@ -5964,10 +6134,11 @@ Router.addRoute('/student/exam', async () => {
         document.getElementById('app').innerHTML = '<div class="loading-full"><i class="ph ph-spinner ph-spin"></i><span>Memproses dan menilai jawaban Anda...</span></div>';
         
         try {
-            const res = await api.submitExamAttempt(AppState.attempt.attemptId, AppState.answers);
+            const res = await api.submitExamAttempt(AppState.attempt.attemptId, AppState.answers, tabSwitchCount);
             if (res.success && res.data) {
                 try {
                     localStorage.removeItem('cbt_ans_' + AppState.attempt.attemptId);
+                    localStorage.removeItem('cbt_switch_' + AppState.attempt.attemptId);
                 } catch (e) {}
                 AppState.update({ 
                     attempt: { 

@@ -24,6 +24,131 @@ Router.addRoute('/student/exam', async () => {
         }
     }
 
+    // --- ANTI-CHEAT & PROCTORING ENGINE (Tab & App Switch Detection) ---
+    let tabSwitchCount = 0;
+    if (attemptId) {
+        try {
+            const cachedSwitch = localStorage.getItem('cbt_switch_' + attemptId);
+            if (cachedSwitch !== null) {
+                tabSwitchCount = parseInt(cachedSwitch, 10) || 0;
+            }
+        } catch (e) {}
+    }
+
+    let isAway = false;
+    let awayStartTime = 0;
+    let isWarningModalOpen = false;
+
+    window.dismissTabWarning = function() {
+        isWarningModalOpen = false;
+        const modal = document.getElementById('proctorWarningModal');
+        if (modal) {
+            modal.style.display = 'none';
+        }
+    };
+
+    function showTabWarningModal(count) {
+        if (isWarningModalOpen) return;
+        isWarningModalOpen = true;
+
+        let modalEl = document.getElementById('proctorWarningModal');
+        if (!modalEl) {
+            modalEl = document.createElement('div');
+            modalEl.id = 'proctorWarningModal';
+            modalEl.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(15, 23, 42, 0.82); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); z-index: 99999; display: flex; align-items: center; justify-content: center; padding: 1.25rem;';
+            document.body.appendChild(modalEl);
+        }
+
+        modalEl.innerHTML = `
+            <div style="background: #ffffff; border-radius: var(--radius-lg, 16px); max-width: 450px; width: 100%; padding: 2rem; box-shadow: 0 25px 50px -12px rgba(0,0,0,0.3); border: 2px solid #fecaca; text-align: center; position: relative;">
+                <div style="width: 64px; height: 64px; border-radius: 50%; background: #fef2f2; color: #dc2626; display: flex; align-items: center; justify-content: center; margin: 0 auto 1.25rem; font-size: 2.25rem; border: 2px solid #fecaca; box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.12);">
+                    <i class="ph ph-warning-octagon"></i>
+                </div>
+                
+                <h3 style="margin: 0 0 0.5rem; color: #991b1b; font-size: 1.3rem; font-weight: 800;">
+                    Peringatan Integritas Ujian!
+                </h3>
+                
+                <p style="color: var(--text-secondary, #475569); font-size: 0.925rem; line-height: 1.5; margin: 0 0 1.25rem;">
+                    Anda terdeteksi meninggalkan halaman ujian (berpindah tab browser atau membuka aplikasi lain).
+                </p>
+
+                <div style="background: #fff1f2; border: 1px solid #fecdd3; border-radius: var(--radius-md, 8px); padding: 0.85rem 1rem; margin-bottom: 1.25rem; text-align: left;">
+                    <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.35rem;">
+                        <span style="font-size: 0.85rem; color: #9f1239; font-weight: 600;">Status Pelanggaran:</span>
+                        <span class="badge" style="background: #e11d48; color: #ffffff; font-weight: 700; font-size: 0.78rem; padding: 2px 10px; border-radius: 9999px;">
+                            Peringatan ke-${count}
+                        </span>
+                    </div>
+                    <div style="font-size: 0.8rem; color: #be123c; line-height: 1.4;">
+                        <i class="ph ph-info"></i> Aktivitas ini dicatat otomatis oleh sistem pengawas dan dilaporkan ke Guru.
+                    </div>
+                </div>
+
+                <p style="color: var(--text-muted, #64748b); font-size: 0.825rem; margin: 0 0 1.5rem; line-height: 1.45;">
+                    Harap tetap fokus pada halaman ujian hingga seluruh soal selesai dikerjakan. Jawaban Anda tetap aman tersimpan.
+                </p>
+
+                <button class="btn btn-primary w-full" onclick="dismissTabWarning()" style="padding: 0.85rem 1.25rem; font-size: 0.95rem; font-weight: 600; border-radius: var(--radius-md, 8px); display: flex; align-items: center; justify-content: center; gap: 0.5rem; box-shadow: 0 4px 6px -1px rgba(37, 99, 235, 0.25); cursor: pointer;">
+                    <i class="ph ph-check-circle"></i> Saya Mengerti & Lanjutkan Ujian
+                </button>
+            </div>
+        `;
+        modalEl.style.display = 'flex';
+    }
+
+    function onUserLeft() {
+        if (isAway) return;
+        isAway = true;
+        awayStartTime = Date.now();
+    }
+
+    function onUserReturned() {
+        if (!isAway) return;
+        isAway = false;
+        const duration = Date.now() - awayStartTime;
+        // Debounce: must be away for at least 800ms
+        if (duration >= 800) {
+            tabSwitchCount++;
+            try {
+                if (attemptId) localStorage.setItem('cbt_switch_' + attemptId, String(tabSwitchCount));
+            } catch (e) {}
+            hasPendingCloudSync = true;
+            triggerCloudSync();
+            showTabWarningModal(tabSwitchCount);
+        }
+    }
+
+    function handleVisibility() {
+        if (document.hidden) {
+            onUserLeft();
+        } else {
+            onUserReturned();
+        }
+    }
+
+    function handleBlur() {
+        onUserLeft();
+    }
+
+    function handleFocus() {
+        onUserReturned();
+    }
+
+    // Attach proctor listeners
+    document.addEventListener('visibilitychange', handleVisibility);
+    window.addEventListener('blur', handleBlur);
+    window.addEventListener('focus', handleFocus);
+
+    // Register cleanup function
+    window._cleanupExamProctor = function() {
+        document.removeEventListener('visibilitychange', handleVisibility);
+        window.removeEventListener('blur', handleBlur);
+        window.removeEventListener('focus', handleFocus);
+        const modal = document.getElementById('proctorWarningModal');
+        if (modal) modal.remove();
+    };
+
     // Helper to render question
     window.renderQuestion = function(index) {
         currentIndex = index;
@@ -189,7 +314,7 @@ Router.addRoute('/student/exam', async () => {
         }
 
         try {
-            const res = await api.saveAttemptAnswers(attemptId, AppState.answers);
+            const res = await api.saveAttemptAnswers(attemptId, AppState.answers, tabSwitchCount);
             if (res && res.success) {
                 hasPendingCloudSync = false;
                 if (indicator) {
@@ -292,6 +417,10 @@ Router.addRoute('/student/exam', async () => {
 
     window.executeSubmit = async function() {
         closeModal();
+        if (typeof window._cleanupExamProctor === 'function') {
+            window._cleanupExamProctor();
+            window._cleanupExamProctor = null;
+        }
         if (AppState.timer) clearInterval(AppState.timer);
         if (window._cbtCloudSyncInterval) {
             clearInterval(window._cbtCloudSyncInterval);
@@ -301,10 +430,11 @@ Router.addRoute('/student/exam', async () => {
         document.getElementById('app').innerHTML = '<div class="loading-full"><i class="ph ph-spinner ph-spin"></i><span>Memproses dan menilai jawaban Anda...</span></div>';
         
         try {
-            const res = await api.submitExamAttempt(AppState.attempt.attemptId, AppState.answers);
+            const res = await api.submitExamAttempt(AppState.attempt.attemptId, AppState.answers, tabSwitchCount);
             if (res.success && res.data) {
                 try {
                     localStorage.removeItem('cbt_ans_' + AppState.attempt.attemptId);
+                    localStorage.removeItem('cbt_switch_' + AppState.attempt.attemptId);
                 } catch (e) {}
                 AppState.update({ 
                     attempt: { 

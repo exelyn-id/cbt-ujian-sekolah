@@ -214,7 +214,7 @@ function _batchSyncAttempts(attempts, answers) {
       a.kkm || 75,
       a.passStatus || "BELUM LULUS",
       "[]",
-      "[]",
+      JSON.stringify([{ type: "INTEGRITY_CHECK", tabSwitchCount: a.tabSwitchCount || 0 }]),
       a.startedAt || now,
       a.submittedAt || now
     ]);

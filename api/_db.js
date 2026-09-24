@@ -528,6 +528,7 @@ async function getExamResults(examId) {
                     score: rec.status === 'SUBMITTED' ? (rec.finalScore !== undefined ? rec.finalScore : rec.rawScore) : null,
                     kkm: rec.kkm || 75,
                     passStatus: rec.status === 'SUBMITTED' ? (rec.passStatus || 'BELUM LULUS') : null,
+                    tabSwitchCount: Number(rec.tabSwitchCount || 0),
                     submittedAt: rec.submittedAt || rec.startedAt
                 });
             }
@@ -612,8 +613,10 @@ async function getStudentAttemptDetail(attemptId) {
             nis: rec.nis,
             attemptNumber: rec.attemptNumber || 1,
             score: rec.finalScore !== undefined ? rec.finalScore : rec.rawScore,
+            finalScore: rec.finalScore !== undefined ? rec.finalScore : rec.rawScore,
             status: rec.status,
             passStatus: rec.passStatus,
+            tabSwitchCount: Number(rec.tabSwitchCount || 0),
             startedAt: rec.startedAt,
             submittedAt: rec.submittedAt,
             endAt: rec.submittedAt,
@@ -678,6 +681,7 @@ async function getExamResultsExportData(examId) {
                     score: rec.status === 'SUBMITTED' ? (rec.finalScore !== undefined ? rec.finalScore : rec.rawScore) : null,
                     kkm: rec.kkm || 75,
                     passStatus: rec.status === 'SUBMITTED' ? (rec.passStatus || 'BELUM LULUS') : null,
+                    tabSwitchCount: Number(rec.tabSwitchCount || 0),
                     startedAt: rec.startedAt,
                     submittedAt: rec.submittedAt,
                     totalCorrect: totalCorrect,

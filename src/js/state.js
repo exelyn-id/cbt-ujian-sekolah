@@ -366,7 +366,7 @@ async function downloadExamResultsExcel(examId, examTitle, triggerBtnId) {
             [],
             [
                 "No", "NIS", "Nama Peserta", "Kelas", "Percobaan", "Status",
-                "Nilai Akhir", "KKM", "Hasil KKM", "Jml Benar", "Jml Salah",
+                "Nilai Akhir", "KKM", "Hasil KKM", "Jml Benar", "Jml Salah", "Keluar Tab / App",
                 "Waktu Mulai", "Waktu Selesai", "Durasi Pengerjaan"
             ]
         ];
@@ -395,6 +395,7 @@ async function downloadExamResultsExcel(examId, examTitle, triggerBtnId) {
                 att.passStatus || '-',
                 att.totalCorrect !== undefined ? att.totalCorrect : '-',
                 att.totalWrong !== undefined ? att.totalWrong : '-',
+                `${att.tabSwitchCount || 0}x`,
                 att.startedAt ? new Date(att.startedAt).toLocaleString('id-ID') : '-',
                 att.submittedAt ? new Date(att.submittedAt).toLocaleString('id-ID') : '-',
                 durationStr
@@ -404,7 +405,7 @@ async function downloadExamResultsExcel(examId, examTitle, triggerBtnId) {
         const wsRekap = XLSX.utils.aoa_to_sheet(rekapRows);
         wsRekap['!cols'] = [
             { wch: 6 }, { wch: 14 }, { wch: 28 }, { wch: 12 }, { wch: 12 }, { wch: 18 },
-            { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 10 },
+            { wch: 12 }, { wch: 8 }, { wch: 14 }, { wch: 10 }, { wch: 10 }, { wch: 16 },
             { wch: 20 }, { wch: 20 }, { wch: 16 }
         ];
         XLSX.utils.book_append_sheet(wb, wsRekap, "Rekap_Nilai");

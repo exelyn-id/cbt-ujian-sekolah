@@ -28,6 +28,12 @@ const Router = {
         const app = document.getElementById('app');
         if (!app) return;
         
+        // Clean up exam proctor listeners if navigating away from exam
+        if (typeof window._cleanupExamProctor === 'function') {
+            try { window._cleanupExamProctor(); } catch (e) {}
+            window._cleanupExamProctor = null;
+        }
+
         if (this.routes[path]) {
             this.currentRoute = path;
             // Clear current view

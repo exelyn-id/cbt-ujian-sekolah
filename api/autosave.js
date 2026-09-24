@@ -17,7 +17,7 @@ module.exports = async function handler(req, res) {
     }
 
     try {
-        const { attemptId, examId, answersMap } = req.body || {};
+        const { attemptId, examId, answersMap, tabSwitchCount } = req.body || {};
 
         if (!attemptId) {
             return res.status(400).json({ success: false, message: 'attemptId is required' });
@@ -28,6 +28,7 @@ module.exports = async function handler(req, res) {
             attemptId,
             examId,
             answers: answersMap || {},
+            tabSwitchCount: Number(tabSwitchCount || 0),
             updatedAt: now
         };
 

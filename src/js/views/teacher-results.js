@@ -110,6 +110,7 @@ const renderTeacherResults = async (params) => {
                                 <th class="py-3 px-4 text-sm font-semibold text-secondary">Kelas</th>
                                 <th class="py-3 px-4 text-sm font-semibold text-secondary text-center">Percobaan</th>
                                 <th class="py-3 px-4 text-sm font-semibold text-secondary">Status</th>
+                                <th class="py-3 px-4 text-sm font-semibold text-secondary text-center">Integritas</th>
                                 <th class="py-3 px-4 text-sm font-semibold text-secondary">Nilai Akhir</th>
                                 <th class="py-3 px-4 text-sm font-semibold text-secondary">Hasil KKM</th>
                                 <th class="py-3 px-4 text-sm font-semibold text-secondary">Waktu Selesai</th>
@@ -119,7 +120,7 @@ const renderTeacherResults = async (params) => {
                         <tbody>
                             ${results.length === 0 ? `
                                 <tr>
-                                    <td colspan="9" class="text-center py-8 text-muted">Belum ada data peserta yang mengikuti ujian ini.</td>
+                                    <td colspan="10" class="text-center py-8 text-muted">Belum ada data peserta yang mengikuti ujian ini.</td>
                                 </tr>
                             ` : results.map(r => `
                                 <tr style="border-bottom: 1px solid var(--border-color);">
@@ -131,6 +132,17 @@ const renderTeacherResults = async (params) => {
                                         <span class="badge ${r.status === 'SUBMITTED' ? 'badge-active' : 'badge-draft'}">
                                             ${r.status === 'SUBMITTED' ? 'Selesai' : 'Mengerjakan'}
                                         </span>
+                                    </td>
+                                    <td class="py-3 px-4 text-center">
+                                        ${r.tabSwitchCount > 0 ? `
+                                            <span class="badge" style="background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; white-space: nowrap; font-size: 0.78rem;" title="Terdeteksi ${r.tabSwitchCount}x berpindah tab/aplikasi">
+                                                <i class="ph ph-warning"></i> ${r.tabSwitchCount}x Keluar
+                                            </span>
+                                        ` : `
+                                            <span class="badge" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; white-space: nowrap; font-size: 0.78rem;" title="Tertib (Tidak terdeteksi keluar tab)">
+                                                <i class="ph ph-shield-check"></i> Tertib (0x)
+                                            </span>
+                                        `}
                                     </td>
                                     <td class="py-3 px-4 font-bold ${r.score !== null ? (r.score >= (r.kkm || 75) ? 'text-success' : 'text-error') : ''}">
                                         ${r.score !== null ? r.score : '-'}
@@ -167,7 +179,18 @@ const renderTeacherResults = async (params) => {
                             <div class="flex justify-between items-start mb-2">
                                 <div>
                                     <div class="font-bold text-base text-primary">${r.name}</div>
-                                    <div class="text-xs text-muted mt-1">NIS: <strong>${r.nis}</strong> • Kelas: <strong>${r.className}</strong></div>
+                                    <div class="text-xs text-muted mt-1 flex items-center gap-1.5 flex-wrap">
+                                        <span>NIS: <strong>${r.nis}</strong> • Kelas: <strong>${r.className}</strong></span>
+                                        ${r.tabSwitchCount > 0 ? `
+                                            <span class="badge" style="background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; font-size: 0.72rem; padding: 1px 6px;">
+                                                <i class="ph ph-warning"></i> ${r.tabSwitchCount}x Keluar
+                                            </span>
+                                        ` : `
+                                            <span class="badge" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-size: 0.72rem; padding: 1px 6px;">
+                                                <i class="ph ph-shield-check"></i> Tertib (0x)
+                                            </span>
+                                        `}
+                                    </div>
                                 </div>
                                 <div>
                                     <span class="badge ${r.passStatus === 'LULUS' ? 'badge-active' : 'badge-archived'}">
@@ -433,8 +456,17 @@ window.showStudentDetail = async function(attemptId) {
                             <div class="text-xs text-muted mt-0.5">
                                 NIS: <strong>${att.nis}</strong> • Kelas: <strong>${att.className}</strong>
                             </div>
-                            <div class="text-xs text-muted mt-0.5">
-                                Percobaan: <strong>Ke-${att.attemptNumber || 1}</strong> • ${att.endAt ? new Date(att.endAt).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}) : '-'}
+                            <div class="text-xs text-muted mt-0.5 flex items-center gap-1.5 flex-wrap">
+                                <span>Percobaan: <strong>Ke-${att.attemptNumber || 1}</strong> • ${att.endAt ? new Date(att.endAt).toLocaleTimeString('id-ID', {hour: '2-digit', minute: '2-digit'}) : '-'}</span>
+                                ${att.tabSwitchCount > 0 ? `
+                                    <span class="badge" style="background: #fef2f2; color: #b91c1c; border: 1px solid #fecaca; font-size: 0.72rem; padding: 2px 6px;">
+                                        <i class="ph ph-warning"></i> Terdeteksi ${att.tabSwitchCount}x Keluar Tab/App
+                                    </span>
+                                ` : `
+                                    <span class="badge" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; font-size: 0.72rem; padding: 2px 6px;">
+                                        <i class="ph ph-shield-check"></i> Integritas Tertib (0x Keluar Tab)
+                                    </span>
+                                `}
                             </div>
                         </div>
                         <div class="text-right">

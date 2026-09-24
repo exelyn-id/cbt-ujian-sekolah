@@ -239,6 +239,7 @@ module.exports = async function handler(req, res) {
             score: normalizedScore,
             kkm: kkm,
             passStatus: passStatus,
+            tabSwitchCount: Number(req.body.tabSwitchCount !== undefined ? req.body.tabSwitchCount : ((participant && participant.tabSwitchCount) || 0)),
             answers: answerRecords
         };
 

@@ -558,14 +558,15 @@ const api = {
         };
     },
 
-    async saveAttemptAnswers(attemptId, answersMap) {
+    async saveAttemptAnswers(attemptId, answersMap, tabSwitchCount = 0) {
         if (isGAS) return _callGAS('saveAttemptAnswers', attemptId, answersMap);
         if (isVercel) {
             const examId = (AppState.currentExam && AppState.currentExam.examId) || '';
             const vRes = await _callVercel('/api/autosave', 'POST', {
                 attemptId: attemptId,
                 examId: examId,
-                answersMap: answersMap
+                answersMap: answersMap,
+                tabSwitchCount: tabSwitchCount
             });
             if (vRes) return vRes;
         }
@@ -574,15 +575,16 @@ const api = {
         return { success: true, savedAt: Date.now() };
     },
 
-    async submitExamAttempt(attemptId, finalAnswersMap) {
-        if (isGAS) return _callGAS('submitExamAttempt', attemptId, finalAnswersMap);
+    async submitExamAttempt(attemptId, finalAnswersMap, tabSwitchCount = 0) {
+        if (isGAS) return _callGAS('submitExamAttempt', attemptId, finalAnswersMap, tabSwitchCount);
         if (isVercel) {
             const examId = (AppState.currentExam && AppState.currentExam.examId) || '';
             const vRes = await _callVercel('/api/submit', 'POST', {
                 attemptId: attemptId,
                 examId: examId,
                 participant: AppState.attempt,
-                answers: finalAnswersMap
+                answers: finalAnswersMap,
+                tabSwitchCount: tabSwitchCount
             });
             if (vRes) return vRes;
         }
